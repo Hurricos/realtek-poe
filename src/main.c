@@ -525,7 +525,7 @@ poe_reply_port_overview(unsigned char *reply)
 	};
 	int i;
 
-	for (i = 0; i < 8; i++)
+	for (i = 0; i < MAX_PORT; i++)
 		state.ports[i].status = GET_STR((reply[3 + i] & 0xf), status);
 
 	return 0;
