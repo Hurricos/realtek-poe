@@ -587,7 +587,7 @@ poe_reply_consume(unsigned char *reply)
 		return -1;
 	}
 
-	if (reply[0] != cmd->cmd[0]) {
+	if ((reply[0] != cmd->cmd[0]) || (reply[0] > ARRAY_SIZE(reply_handler))) {
 		ULOG_DBG("received reply with bad command id\n");
 		return -1;
 	}
