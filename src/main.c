@@ -788,30 +788,31 @@ ubus_poe_sendframe_cb(struct ubus_context *ctx, struct ubus_object *obj,
 		   struct blob_attr *msg)
 {
 	struct blob_attr *tb[__POE_SENDFRAME_MAX];
+	char *frame, *next, *end;
+	size_t cmd_len = 0;
+	unsigned long byte_val;
+	uint8_t cmd[9];
+
 	blobmsg_parse(ubus_poe_sendframe_policy, __POE_SENDFRAME_MAX, tb, blob_data(msg), blob_len(msg));
 
 	if (!tb[POE_SENDFRAME_STRING])
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
-	char *frame = blobmsg_get_string(tb[POE_SENDFRAME_STRING]);
+	frame = blobmsg_get_string(tb[POE_SENDFRAME_STRING]);
+	end = frame + strlen(frame);
+	next = frame;
 
-	unsigned int frame_strlen = strlen(frame);
-	unsigned char cmd[9];
-	unsigned int cmdsize = 0;
-	unsigned char *end = cmd + sizeof(cmd);
-	unsigned int u;
-	unsigned int i = 0;
+	while ((next < end) && (cmd_len < sizeof(cmd))) {
+		errno = 0;
+		byte_val = strtoul(frame, &next, 16);
+		if (errno || (frame == next) || (byte_val > 0xff))
+			return UBUS_STATUS_INVALID_ARGUMENT;
 
-	while ((cmd + cmdsize < end) && (i < frame_strlen)) {
-		if (sscanf((frame+i), "0x%2x", &u) == 1) {
-		    cmd[cmdsize++] = u;
-			i += 4;
-		} else
-			i += 1;
+		cmd[cmd_len++] = byte_val;
+		frame = next;
 	}
-	return poe_cmd_queue(cmd, cmdsize);
 
-	return UBUS_STATUS_OK;
+	return poe_cmd_queue(cmd, cmd_len);
 }
 
 static int
