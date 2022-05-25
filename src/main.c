@@ -80,6 +80,17 @@ static struct config config = {
 	.port_count = 8,
 };
 
+static uint16_t read16_be(uint8_t *raw)
+{
+	return (uint16_t)raw[0] << 8 | raw[1];
+}
+
+static void write16_be(uint8_t *raw, uint16_t value)
+{
+	raw[0] = value >> 8;
+	raw[1] =  value & 0xff;
+}
+
 static void
 config_load_port(struct uci_section *s)
 {
@@ -377,10 +388,8 @@ poe_cmd_global_power_budget(int budget, int guard)
 {
 	unsigned char cmd[] = { 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
-	cmd[3] = budget * 10 / 256;
-	cmd[4] = budget * 10 % 256;
-	cmd[5] = guard * 10 / 256;
-	cmd[6] = guard * 10 % 256;
+	write16_be(cmd + 3, budget * 10);
+	write16_be(cmd + 5, guard * 10);
 
 	return poe_cmd_queue(cmd, sizeof(cmd));
 }
@@ -471,10 +480,7 @@ poe_cmd_power_stats(void)
 static int
 poe_reply_power_stats(unsigned char *reply)
 {
-	state.power_consumption = reply[2];
-	state.power_consumption *= 256;
-	state.power_consumption += reply[3];
-	state.power_consumption /= 10;
+	state.power_consumption = read16_be(reply + 2) * 0.1;
 
 	return 0;
 }
@@ -543,15 +549,9 @@ poe_cmd_port_power_stats(unsigned char port)
 static int
 poe_reply_port_power_stats(unsigned char *reply)
 {
-	float watt;
+	int port_idx = reply[2];
 
-	watt = reply[9];
-	watt *= 256;
-	watt += reply[10];
-	watt /= 10;
-
-	state.ports[reply[2]].watt = watt;
-
+	state.ports[port_idx].watt = read16_be(reply + 9) * 0.1;
 	return 0;
 }
 
