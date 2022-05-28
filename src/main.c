@@ -632,8 +632,17 @@ poe_stream_notify_cb(struct ustream *s)
 static int
 poe_stream_open(char *dev, struct ustream_fd *s, speed_t speed)
 {
-	struct termios tio;
-	int tty;
+	int ret, tty;
+
+	struct termios tio = {
+		.c_oflag = 0,
+		.c_iflag = 0,
+		.c_cflag = speed | CS8 | CREAD | CLOCAL,
+		.c_lflag = 0,
+		.c_cc = {
+			[VMIN] = 1,
+		}
+	};
 
 	tty = open(dev, O_RDWR | O_NOCTTY | O_NONBLOCK);
 	if (tty < 0) {
@@ -641,21 +650,11 @@ poe_stream_open(char *dev, struct ustream_fd *s, speed_t speed)
 		return -1;
 	}
 
-	tcgetattr(tty, &tio);
-	tio.c_cflag |= CREAD;
-	tio.c_cflag |= CS8;
-	tio.c_iflag |= IGNPAR;
-	tio.c_lflag &= ~(ICANON);
-	tio.c_lflag &= ~(ECHO);
-	tio.c_lflag &= ~(ECHOE);
-	tio.c_lflag &= ~(ISIG);
-	tio.c_iflag &= ~(IXON | IXOFF | IXANY);
-	tio.c_cflag &= ~CRTSCTS;
-	tio.c_cc[VMIN] = 1;
-	tio.c_cc[VTIME] = 0;
-	cfsetispeed(&tio, speed);
-	cfsetospeed(&tio, speed);
-	tcsetattr(tty, TCSANOW, &tio);
+	ret = tcsetattr(tty, TCSANOW, &tio);
+	if (ret) {
+		perror("Can't configure serial port");
+		return -errno;
+	}
 
 	s->stream.string_data = false;
 	s->stream.notify_read = poe_stream_msg_cb;
