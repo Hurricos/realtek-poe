@@ -117,6 +117,7 @@ config_load_port(struct uci_section *s)
 	};
 
 	struct blob_attr *tb[__PORT_ATTR_MAX] = { 0 };
+	const char *name;
 	unsigned int id;
 
 	blob_buf_init(&b, 0);
@@ -124,18 +125,19 @@ config_load_port(struct uci_section *s)
 	blobmsg_parse(port_attrs, __PORT_ATTR_MAX, tb, blob_data(b.head), blob_len(b.head));
 
 	if (!tb[PORT_ATTR_ID] || !tb[PORT_ATTR_NAME]) {
-		ULOG_ERR("invalid port settings");
+		ULOG_ERR("invalid port with missing name and id");
 		return;
 	}
 
+	name = blobmsg_get_string(tb[PORT_ATTR_NAME]);
 	id = blobmsg_get_u32(tb[PORT_ATTR_ID]);
 	if (!id || id > MAX_PORT) {
-		ULOG_ERR("invalid port id");
+		ULOG_ERR("invalid port id=%u for %s", id, name);
 		return;
 	}
 	id--;
 
-	strncpy(config.ports[id].name, blobmsg_get_string(tb[PORT_ATTR_NAME]), 16);
+	strncpy(config.ports[id].name, name, 16);
 
 	if (tb[PORT_ATTR_ENABLE])
 		config.ports[id].enable = !!blobmsg_get_u32(tb[PORT_ATTR_ENABLE]);
