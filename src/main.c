@@ -289,6 +289,13 @@ poe_cmd_port_enable(unsigned char port, unsigned char enable)
 	return poe_cmd_queue(cmd, sizeof(cmd));
 }
 
+static int poe_cmd_port_mapping_enable(bool enable)
+{
+	unsigned char cmd[] = { 0x02, 0x00, enable };
+
+	return poe_cmd_queue(cmd, sizeof(cmd));
+}
+
 /* 0x06 - Set global port enable
  *	0: Disable PSE Functionality on all Ports
  *	1: Enable PSE Functionality on all Ports
@@ -701,6 +708,7 @@ poe_initial_setup(void)
 {
 	poe_cmd_status();
 	poe_cmd_power_mgmt_mode(2);
+	poe_cmd_port_mapping_enable(false);
 	poe_cmd_global_power_budget(0, 0);
 	poe_cmd_global_port_enable(0);
 	poe_cmd_global_power_budget(config.budget, config.budget_guard);
