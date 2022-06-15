@@ -531,12 +531,12 @@ static int
 poe_reply_port_overview(unsigned char *reply)
 {
 	const char *status[] = {
-		"Disabled",
-		"Searching",
-		"Delivering power",
-		"Fault",
-		"Other fault",
-		"Requesting power",
+		[0] = "Disabled",
+		[1] = "Searching",
+		[2] = "Delivering power",
+		[4] = "Fault",
+		[5] = "Other fault",
+		[6] = "Requesting power",
 	};
 	int i;
 
