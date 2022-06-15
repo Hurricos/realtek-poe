@@ -45,16 +45,16 @@ struct config {
 };
 
 struct port_state {
-	char *status;
+	const char *status;
 	float watt;
-	char *poe_mode;
+	const char *poe_mode;
 };
 
 struct state {
-	char *sys_mode;
+	const char *sys_mode;
 	unsigned char sys_version;
-	char *sys_mcu;
-	char *sys_status;
+	const char *sys_mcu;
+	const char *sys_status;
 	unsigned char sys_ext_version;
 	float power_consumption;
 
@@ -443,20 +443,20 @@ poe_cmd_status(void)
 static int
 poe_reply_status(unsigned char *reply)
 {
-	static char *mode[]={
+	const char *mode[] = {
 		"Semi-auto I2C",
 		"Semi-auto UART",
 		"Auto I2C",
 		"Auto UART"
 	};
-	static char *mcu[]={
+	const char *mcu[] = {
 		"ST Micro ST32F100 Microcontroller",
 		"Nuvoton M05xx LAN Microcontroller",
 		"ST Micro STF030C8 Microcontroller",
 		"Nuvoton M058SAN Microcontroller",
 		"Nuvoton NUC122 Microcontroller"
 	};
-	static char *status[]={
+	const char *status[] = {
 		"Global Disable pin is de-asserted:No system reset from the previous query cmd:Configuration saved",
 		"Global Disable pin is de-asserted:No system reset from the previous query cmd:Configuration Dirty",
 		"Global Disable pin is de-asserted:System reseted:Configuration saved",
@@ -506,7 +506,7 @@ poe_cmd_port_ext_config(unsigned char port)
 static int
 poe_reply_port_ext_config(unsigned char *reply)
 {
-	static char *mode[] = {
+	const char *mode[] = {
 		"PoE",
 		"Legacy",
 		"pre-PoE+",
@@ -530,7 +530,7 @@ poe_cmd_port_overview(void)
 static int
 poe_reply_port_overview(unsigned char *reply)
 {
-	static char *status[]={
+	const char *status[] = {
 		"Disabled",
 		"Searching",
 		"Delivering power",
