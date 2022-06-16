@@ -1,0 +1,52 @@
+#
+# This is a hacky workflow to build the realtek-poe package
+#
+# The magic is in the Docker image containing the openwrt SDK. The trick is
+# to drop realtek-poe inside the packages/ subdir of the SDK. This is achieved
+# by mounting a docker volume as the realtek-poe package.
+# Similarly a volume is mounted for the artifacts directory "bin/". The latter
+# volume is used to extract the .ipk from the container and upload it.
+#
+# The entire workings are very hacky. Don't let perfect be the enemy of good!
+#
+
+name: CI
+
+on:
+  push:
+    branches: [ "master", "realtek-poe" ]
+  pull_request:
+    branches: [ "master", "realtek-poe" ]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Copy-paste from openwrt action
+        run: |
+          mkdir $GITHUB_WORKSPACE/bin
+          sudo chown -R 1000:1000 $GITHUB_WORKSPACE
+
+      - name: Build in docker container
+        run: |
+          docker run --rm \
+            -v $GITHUB_WORKSPACE/bin:/home/build/openwrt/bin \
+            -v $GITHUB_WORKSPACE:/home/build/openwrt/package/realtek-poe \
+            openwrt/sdk:realtek-rtl838x-snapshot \
+            /bin/bash -c " \
+              ./scripts/feeds update base \
+              && ./scripts/feeds install libubus libuci \
+              && make defconfig \
+              && make package/realtek-poe/compile -j$(nproc) V=s
+            "
+
+      - name: Store packages
+        uses: actions/upload-artifact@v2
+        with:
+          name: mips_4kec-packages
+          path: bin/packages/mips_4kec/base/realtek-poe_*.ipk
