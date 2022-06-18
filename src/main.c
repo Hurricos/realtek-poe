@@ -37,8 +37,8 @@ struct port_config {
 struct config {
 	int debug;
 
-	int budget;
-	int budget_guard;
+	float budget;
+	float budget_guard;
 
 	int port_count;
 	struct port_config ports[MAX_PORT];
@@ -391,7 +391,7 @@ poe_cmd_power_mgmt_mode(unsigned char mode)
 
 /* 0x18 - Set global power budget */
 static int
-poe_cmd_global_power_budget(int budget, int guard)
+poe_cmd_global_power_budget(float budget, float guard)
 {
 	unsigned char cmd[] = { 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
