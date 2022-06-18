@@ -89,99 +89,50 @@ static void write16_be(uint8_t *raw, uint16_t value)
 	raw[1] =  value & 0xff;
 }
 
-static void
-config_load_port(struct uci_section *s)
+static void load_port_config(struct uci_context *uci, struct uci_section *s)
 {
-	enum {
-		PORT_ATTR_ID,
-		PORT_ATTR_NAME,
-		PORT_ATTR_ENABLE,
-		PORT_ATTR_PRIO,
-		PORT_ATTR_POE_PLUS,
-		__PORT_ATTR_MAX,
-	};
+	const char * name, *id_str, *enable, *priority, *poe_plus;
+	unsigned long id;
 
-	static const struct blobmsg_policy port_attrs[__PORT_ATTR_MAX] = {
-		[PORT_ATTR_ID] = { .name = "id", .type = BLOBMSG_TYPE_INT32 },
-		[PORT_ATTR_NAME] = { .name = "name", .type = BLOBMSG_TYPE_STRING },
-		[PORT_ATTR_ENABLE] = { .name = "enable", .type = BLOBMSG_TYPE_INT32 },
-		[PORT_ATTR_PRIO] = { .name = "priority", .type = BLOBMSG_TYPE_INT32 },
-		[PORT_ATTR_POE_PLUS] = { .name = "poe_plus", .type = BLOBMSG_TYPE_INT32 },
-	};
+	id_str = uci_lookup_option_string(uci, s, "id");
+	name = uci_lookup_option_string(uci, s, "name");
+	enable = uci_lookup_option_string(uci, s, "enable");
+	priority = uci_lookup_option_string(uci, s, "priority");
+	poe_plus = uci_lookup_option_string(uci, s, "poe_plus");
 
-	const struct uci_blob_param_list port_attr_list = {
-		.n_params = __PORT_ATTR_MAX,
-		.params = port_attrs,
-	};
-
-	struct blob_attr *tb[__PORT_ATTR_MAX] = { 0 };
-	const char *name;
-	unsigned int id;
-
-	blob_buf_init(&b, 0);
-	uci_to_blob(&b, s, &port_attr_list);
-	blobmsg_parse(port_attrs, __PORT_ATTR_MAX, tb, blob_data(b.head), blob_len(b.head));
-
-	if (!tb[PORT_ATTR_ID] || !tb[PORT_ATTR_NAME]) {
+	if (!id_str || !name) {
 		ULOG_ERR("invalid port with missing name and id");
 		return;
 	}
 
-	name = blobmsg_get_string(tb[PORT_ATTR_NAME]);
-	id = blobmsg_get_u32(tb[PORT_ATTR_ID]);
+	id = strtoul(id_str, NULL, 0);
 	if (!id || id > MAX_PORT) {
-		ULOG_ERR("invalid port id=%u for %s", id, name);
+		ULOG_ERR("invalid port id=%lu for %s", id, name);
 		return;
 	}
 	id--;
 
-	strncpy(config.ports[id].name, name, 16);
-
-	if (tb[PORT_ATTR_ENABLE])
-		config.ports[id].enable = !!blobmsg_get_u32(tb[PORT_ATTR_ENABLE]);
-
-	if (tb[PORT_ATTR_PRIO])
-		config.ports[id].priority = blobmsg_get_u32(tb[PORT_ATTR_PRIO]);
+	strncpy(config.ports[id].name, name, sizeof(config.ports[id].name));
+	config.ports[id].enable = enable ? !strcmp(enable, "1") : 0;
+	config.ports[id].priority = priority ? strtoul(priority, NULL, 0) : 0;
 	if (config.ports[id].priority > 3)
 		config.ports[id].priority = 3;
 
-	if (tb[PORT_ATTR_POE_PLUS] && blobmsg_get_u32(tb[PORT_ATTR_POE_PLUS]))
+	if (poe_plus && !strcmp(poe_plus, "1"))
 		config.ports[id].power_up_mode = 3;
 }
 
-static void
-config_load_global(struct uci_section *s)
+static void load_global_config(struct uci_context *uci, struct uci_section *s)
 {
-	enum {
-		GLOBAL_ATTR_BUDGET,
-		GLOBAL_ATTR_GUARD,
-		__GLOBAL_ATTR_MAX,
-	};
+	const char *budget, *guardband;
 
-	static const struct blobmsg_policy global_attrs[__GLOBAL_ATTR_MAX] = {
-		[GLOBAL_ATTR_BUDGET] = { .name = "budget", .type = BLOBMSG_TYPE_INT32 },
-		[GLOBAL_ATTR_GUARD] = { .name = "guard", .type = BLOBMSG_TYPE_INT32 },
-	};
+	budget = uci_lookup_option_string(uci, s, "budget");
+	guardband = uci_lookup_option_string(uci, s, "guard");
 
-	const struct uci_blob_param_list global_attr_list = {
-		.n_params = __GLOBAL_ATTR_MAX,
-		.params = global_attrs,
-	};
-
-	struct blob_attr *tb[__GLOBAL_ATTR_MAX] = { 0 };
-
-	blob_buf_init(&b, 0);
-	uci_to_blob(&b, s, &global_attr_list);
-	blobmsg_parse(global_attrs, __GLOBAL_ATTR_MAX, tb, blob_data(b.head), blob_len(b.head));
-
-	config.budget = 65;
-	if (tb[GLOBAL_ATTR_BUDGET])
-		config.budget = blobmsg_get_u32(tb[GLOBAL_ATTR_BUDGET]);
-
-	if (tb[GLOBAL_ATTR_GUARD])
-		config.budget_guard = blobmsg_get_u32(tb[GLOBAL_ATTR_GUARD]);
-	else
-		config.budget_guard = config.budget / 10;
+	config.budget = budget ? strtof(budget, NULL) : 31.0;
+	config.budget_guard = config.budget / 10;
+	if (guardband)
+		config.budget_guard = strtof(guardband, NULL);
 }
 
 static void
@@ -200,13 +151,13 @@ config_load(int init)
 				struct uci_section *s = uci_to_section(e);
 
 				if (!strcmp(s->type, "global"))
-					config_load_global(s);
+					load_global_config(uci, s);
 			}
 		uci_foreach_element(&package->sections, e) {
 			struct uci_section *s = uci_to_section(e);
 
 			if (!strcmp(s->type, "port"))
-				config_load_port(s);
+				load_port_config(uci, s);
 		}
 	}
 
