@@ -731,13 +731,8 @@ ubus_poe_info_cb(struct ubus_context *ctx, struct ubus_object *obj,
 	return UBUS_STATUS_OK;
 }
 
-enum {
-	POE_SENDFRAME_STRING,
-	__POE_SENDFRAME_MAX
-};
-
-static const struct blobmsg_policy ubus_poe_sendframe_policy[__POE_SENDFRAME_MAX] = {
-	[POE_SENDFRAME_STRING] = { "frame", BLOBMSG_TYPE_STRING },
+static const struct blobmsg_policy ubus_poe_sendframe_policy[] = {
+	{ "frame", BLOBMSG_TYPE_STRING },
 };
 
 static int
@@ -745,18 +740,19 @@ ubus_poe_sendframe_cb(struct ubus_context *ctx, struct ubus_object *obj,
 		   struct ubus_request_data *req, const char *method,
 		   struct blob_attr *msg)
 {
-	struct blob_attr *tb[__POE_SENDFRAME_MAX];
+	struct blob_attr *tb[ARRAY_SIZE(ubus_poe_sendframe_policy)];
 	char *frame, *next, *end;
 	size_t cmd_len = 0;
 	unsigned long byte_val;
 	uint8_t cmd[9];
 
-	blobmsg_parse(ubus_poe_sendframe_policy, __POE_SENDFRAME_MAX, tb, blob_data(msg), blob_len(msg));
-
-	if (!tb[POE_SENDFRAME_STRING])
+	blobmsg_parse(ubus_poe_sendframe_policy,
+		      ARRAY_SIZE(ubus_poe_sendframe_policy),
+		      tb, blob_data(msg), blob_len(msg));
+	if (!*tb)
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
-	frame = blobmsg_get_string(tb[POE_SENDFRAME_STRING]);
+	frame = blobmsg_get_string(*tb);
 	end = frame + strlen(frame);
 	next = frame;
 
