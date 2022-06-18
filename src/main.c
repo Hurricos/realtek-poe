@@ -224,16 +224,16 @@ poe_cmd_dump(char *type, unsigned char *data)
 	if (!config.debug)
 		return;
 
-	fprintf(stderr, "%s ->", type);
+	fprintf(stderr, "%s", type);
 	for (i = 0; i < 12; i++)
-		fprintf(stderr, " 0x%02x", data[i]);
+		fprintf(stderr, " %02x", data[i]);
 	fprintf(stderr, "\n");
 }
 
 static int
 poe_cmd_send(struct cmd *cmd)
 {
-	poe_cmd_dump("TX", cmd->cmd);
+	poe_cmd_dump("TX ->", cmd->cmd);
 	ustream_write(&stream.stream, (char *)cmd->cmd, 12, false);
 
 	return 0;
@@ -578,7 +578,7 @@ poe_reply_consume(unsigned char *reply)
 	struct cmd *cmd = NULL;
 	unsigned char sum = 0, i;
 
-	poe_cmd_dump("RX", reply);
+	poe_cmd_dump("RX <-", reply);
 
 	if (list_empty(&cmd_pending)) {
 		ULOG_ERR("received unsolicited reply\n");
