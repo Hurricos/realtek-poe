@@ -843,9 +843,21 @@ ubus_poe_reload_cb(struct ubus_context *ctx, struct ubus_object *obj,
 	return UBUS_STATUS_OK;
 }
 
+static int poe_power_ctl(struct ubus_context *ctx, struct ubus_object *obj,
+			 struct ubus_request_data *req, const char *method,
+			 struct blob_attr *msg)
+{
+	bool enable = !strcmp(method, "poweron");
+
+	poe_cmd_global_port_enable(enable);
+	return UBUS_STATUS_OK;
+}
+
 static const struct ubus_method ubus_poe_methods[] = {
 	UBUS_METHOD_NOARG("info", ubus_poe_info_cb),
 	UBUS_METHOD_NOARG("reload", ubus_poe_reload_cb),
+	UBUS_METHOD_NOARG("poweron", poe_power_ctl),
+	UBUS_METHOD_NOARG("poweroff", poe_power_ctl),
 	UBUS_METHOD("sendframe", ubus_poe_sendframe_cb, ubus_poe_sendframe_policy),
 };
 
