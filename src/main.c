@@ -809,6 +809,9 @@ ubus_poe_sendframe_cb(struct ubus_context *ctx, struct ubus_object *obj,
 	unsigned long byte_val;
 	uint8_t cmd[9];
 
+	if (!config.debug)
+		return UBUS_STATUS_PERMISSION_DENIED;
+
 	blobmsg_parse(ubus_poe_sendframe_policy,
 		      ARRAY_SIZE(ubus_poe_sendframe_policy),
 		      tb, blob_data(msg), blob_len(msg));
