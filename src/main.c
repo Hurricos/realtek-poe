@@ -53,6 +53,7 @@ struct port_state {
 struct state {
 	const char *sys_mode;
 	unsigned char sys_version;
+	const char *sys_pse;
 	const char *sys_mcu;
 	const char *sys_status;
 	unsigned char sys_ext_version;
@@ -435,6 +436,7 @@ poe_reply_status(unsigned char *reply)
 
 	state.sys_mode = GET_STR(reply[2], mode);
 	state.num_detected_ports = reply[3];
+	state.sys_pse = pse_id_to_str(read16_be(reply + 5));
 	state.sys_version = reply[7];
 	state.sys_mcu = GET_STR(reply[8], mcu);
 	state.sys_status = GET_STR(reply[9], status);
@@ -767,6 +769,8 @@ ubus_poe_info_cb(struct ubus_context *ctx, struct ubus_object *obj,
 	blobmsg_add_string(&b, "firmware", tmp);
 	if (state.sys_mcu)
 		blobmsg_add_string(&b, "mcu", state.sys_mcu);
+	if (state.sys_pse)
+		blobmsg_add_string(&b, "pse", state.sys_pse);
 	blobmsg_add_double(&b, "budget", config.budget);
 	blobmsg_add_double(&b, "consumption", state.power_consumption);
 
