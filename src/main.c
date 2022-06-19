@@ -374,6 +374,20 @@ static int poe_cmd_status(struct mcu *mcu)
 	return mcu_queue_cmd(mcu, cmd, sizeof(cmd));
 }
 
+static const char *pse_id_to_str(unsigned int pse_id)
+{
+	switch (pse_id) {
+	case 0xe011:
+		return "BCM59011";
+	case 0xe111:
+		return "BCM59111";
+	case 0xe121:
+		return "BCM59121";
+	default:
+		return "unknown";
+	}
+}
+
 static int poe_reply_status(struct mcu_state *state, uint8_t *reply)
 {
 	const char *mode[] = {
@@ -402,6 +416,7 @@ static int poe_reply_status(struct mcu_state *state, uint8_t *reply)
 
 	state->sys_mode = GET_STR(reply[2], mode);
 	state->num_detected_ports = reply[3];
+	state->sys_pse = pse_id_to_str(read16_be(reply + 5));
 	state->sys_version = reply[7];
 	state->sys_mcu = GET_STR(reply[8], mcu_names);
 	state->sys_status = GET_STR(reply[9], status);
@@ -786,6 +801,8 @@ static int ubus_poe_info_cb(struct ubus_context *ctx, struct ubus_object *obj,
 	blobmsg_add_string(b, "firmware", tmp);
 	if (state->sys_mcu)
 		blobmsg_add_string(b, "mcu", state->sys_mcu);
+	if (state->sys_pse)
+		blobmsg_add_string(b, "pse", state->sys_pse);
 	blobmsg_add_double(b, "budget", cfg->budget);
 	blobmsg_add_double(b, "consumption", state->power_consumption);
 

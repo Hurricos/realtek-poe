@@ -24,6 +24,7 @@ struct mcu_state {
 	uint8_t sys_version;
 	const char *sys_mcu;
 	const char *sys_status;
+	const char *sys_pse;
 	uint8_t sys_ext_version;
 	float power_consumption;
 	unsigned int num_detected_ports;
