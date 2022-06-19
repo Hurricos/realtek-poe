@@ -209,15 +209,16 @@ static void config_apply_quirks(struct config *config)
 static void
 poe_cmd_dump(char *type, unsigned char *data)
 {
-	int i;
+	char boog[50];
+	int i, lex = 0;
 
 	if (!config.debug)
 		return;
 
-	fprintf(stderr, "%s", type);
 	for (i = 0; i < 12; i++)
-		fprintf(stderr, " %02x", data[i]);
-	fprintf(stderr, "\n");
+		lex += sprintf(boog + lex, " %02x", data[i]);
+
+	ULOG_DBG("%s%s\n", type, boog);
 }
 
 static int
@@ -606,17 +607,17 @@ poe_reply_consume(unsigned char *reply)
 		sum += reply[i];
 
 	if (reply[11] != sum) {
-		ULOG_DBG("received reply with bad checksum\n");
+		ULOG_WARN("received reply with bad checksum\n");
 		return -1;
 	}
 
 	if ((reply[0] != cmd->cmd[0]) || (reply[0] > ARRAY_SIZE(reply_handler))) {
-		ULOG_DBG("received reply with bad command id\n");
+		ULOG_WARN("received reply with bad command id\n");
 		return -1;
 	}
 
 	if (reply[1] != cmd->cmd[1]) {
-		ULOG_DBG("received reply with bad sequence number\n");
+		ULOG_WARN("received reply with bad sequence number\n");
 		return -1;
 	}
 
@@ -899,7 +900,7 @@ ubus_connect_handler(struct ubus_context *ctx)
 
 	ret = ubus_add_object(ctx, &ubus_poe_object);
 	if (ret)
-		fprintf(stderr, "Failed to add object: %s\n", ubus_strerror(ret));
+		ULOG_ERR("Failed to add object: %s\n", ubus_strerror(ret));
 }
 
 int
@@ -922,6 +923,7 @@ main(int argc, char ** argv)
 		switch (ch) {
 		case 'd':
 			config.debug = 1;
+			ulog_threshold(LOG_DEBUG);
 			break;
 		}
 	}
