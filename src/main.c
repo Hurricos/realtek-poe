@@ -66,8 +66,6 @@ struct cmd {
 	unsigned char cmd[12];
 };
 
-static struct uloop_timeout state_timeout;
-static struct ubus_auto_conn conn;
 static struct ustream_fd stream;
 static LIST_HEAD(cmd_pending);
 static unsigned char cmd_seq;
@@ -731,7 +729,7 @@ state_timeout_cb(struct uloop_timeout *t)
 		poe_cmd_port_power_stats(i);
 	}
 
-	uloop_timeout_set(&state_timeout, 2 * 1000);
+	uloop_timeout_set(t, 2 * 1000);
 }
 
 static int
@@ -866,6 +864,14 @@ main(int argc, char ** argv)
 {
 	int ch;
 
+	struct uloop_timeout state_timeout = {
+		.cb = state_timeout_cb,
+	};
+
+	struct ubus_auto_conn conn = {
+		.cb = ubus_connect_handler,
+	};
+
 	ulog_open(ULOG_STDIO | ULOG_SYSLOG, LOG_DAEMON, "realtek-poe");
 	ulog_threshold(LOG_INFO);
 
@@ -880,7 +886,6 @@ main(int argc, char ** argv)
 	config_load(1);
 
 	uloop_init();
-	conn.cb = ubus_connect_handler;
 	ubus_auto_connect(&conn);
 
 	if (poe_stream_open("/dev/ttyS1", &stream, B19200) < 0)
@@ -888,7 +893,6 @@ main(int argc, char ** argv)
 
 
 	poe_initial_setup();
-	state_timeout.cb = state_timeout_cb;
 	uloop_timeout_set(&state_timeout, 1000);
 	uloop_run();
 	uloop_done();
