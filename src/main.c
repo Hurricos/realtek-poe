@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <getopt.h>
 
+#include <libubox/runqueue.h>
 #include <libubox/ustream.h>
 #include <libubox/uloop.h>
 #include <libubox/list.h>
@@ -58,6 +59,8 @@ struct state {
 	const char *sys_status;
 	unsigned char sys_ext_version;
 	float power_consumption;
+	unsigned int reported_budget;
+	unsigned int budget_valid : 1;
 
 	struct port_state ports[MAX_PORT];
 };
@@ -67,6 +70,7 @@ struct cmd {
 	unsigned char cmd[12];
 };
 
+static struct runqueue_task *ecm_query_task;
 static struct ustream_fd stream;
 static LIST_HEAD(cmd_pending);
 static unsigned char cmd_seq;
@@ -476,6 +480,11 @@ static int
 poe_reply_power_stats(unsigned char *reply)
 {
 	state.power_consumption = read16_be(reply + 2) * 0.1;
+	state.reported_budget = read16_be(reply + 4);
+	state.budget_valid = 1;
+
+	if (ecm_query_task)
+		runqueue_task_complete(ecm_query_task);
 
 	return 0;
 }
@@ -712,14 +721,14 @@ static void poe_set_power_budget(const struct config *config)
 	}
 }
 
-static int
-poe_initial_setup(void)
+static int poe_initial_setup(bool reset_budget)
 {
 	poe_cmd_status();
 	poe_cmd_power_mgmt_mode(2);
 	poe_cmd_port_mapping_enable(false);
 	poe_cmd_global_port_enable(0);
-	poe_set_power_budget(&config);
+	if (reset_budget)
+		poe_set_power_budget(&config);
 
 	poe_port_setup();
 
@@ -867,6 +876,90 @@ ubus_connect_handler(struct ubus_context *ctx)
 		fprintf(stderr, "Failed to add object: %s\n", ubus_strerror(ret));
 }
 
+static void cacancel(struct runqueue *, struct runqueue_task *, int type)
+{
+	ULOG_ERR("Cancel me ya evil bartard %d\n", type);
+}
+
+static void kakill(struct runqueue *, struct runqueue_task *)
+{
+	ULOG_ERR("Hitman Information and Privacy Protection Act\n");
+}
+
+static void print_me_drawers(struct runqueue *, struct runqueue_task *task)
+{
+	ULOG_INFO("Querying MCU\n");
+	poe_cmd_status();
+	poe_cmd_power_stats();
+}
+
+static void print_me_bawlzy(struct runqueue *, struct runqueue_task *task)
+{
+	unsigned int desired_budget, desired_guard;
+	bool reset_budget = false;
+
+	desired_budget = config.budget * 10;
+	desired_guard = config.budget_guard * 10;
+
+	if ((desired_budget - desired_guard) != state.reported_budget) {
+		ULOG_INFO("Config file asks for different budget\n");
+		reset_budget = true;
+	}
+
+	poe_initial_setup(reset_budget);
+}
+
+static void q_empty(struct runqueue *q)
+{
+	ULOG_ERR("All done!\n");
+}
+
+
+static void coconutty(struct runqueue *, struct runqueue_task *)
+{
+	ULOG_ERR("nutty cocoa\n");
+}
+
+static void schedule_ecm_query(struct runqueue *q)
+{
+	static const struct runqueue_task_type timber = {
+		.name = "ECM query",
+		.run = print_me_drawers,
+		.cancel = cacancel,
+		.kill = kakill
+	};
+
+	static struct runqueue_task tsk = {
+		.type = &timber,
+		.complete = coconutty,
+		.run_timeout = 10000,
+	};
+
+
+	runqueue_task_add(q, &tsk, false);
+	ecm_query_task = &tsk;
+}
+
+static void schedule_poe_config(struct runqueue *q)
+{
+	static const struct runqueue_task_type timbuci = {
+		.name = "PoE config",
+		.run = print_me_bawlzy,
+		.cancel = cacancel,
+		.kill = kakill
+	};
+
+	static struct runqueue_task tsk = {
+		.type = &timbuci,
+		.complete = coconutty,
+		.run_timeout = 10000,
+	};
+
+
+	runqueue_task_add(q, &tsk, false);
+// 	ecm_query_task = &tsk;
+}
+
 int
 main(int argc, char ** argv)
 {
@@ -878,6 +971,11 @@ main(int argc, char ** argv)
 
 	struct ubus_auto_conn conn = {
 		.cb = ubus_connect_handler,
+	};
+
+	struct runqueue init_task_queue = {
+		.max_running_tasks = 1,
+		.empty_cb = q_empty,
 	};
 
 	ulog_open(ULOG_STDIO | ULOG_SYSLOG, LOG_DAEMON, "realtek-poe");
@@ -895,13 +993,17 @@ main(int argc, char ** argv)
 	config_apply_quirks(&config);
 
 	uloop_init();
+	runqueue_init(&init_task_queue);
+	conn.cb = ubus_connect_handler;
 	ubus_auto_connect(&conn);
 
 	if (poe_stream_open("/dev/ttyS1", &stream, B19200) < 0)
 		return -1;
 
 
-	poe_initial_setup();
+	schedule_ecm_query(&init_task_queue);
+	schedule_poe_config(&init_task_queue);
+	state_timeout.cb = state_timeout_cb;
 	uloop_timeout_set(&state_timeout, 1000);
 	uloop_run();
 	uloop_done();
