@@ -24,7 +24,7 @@
 typedef int (*poe_reply_handler)(unsigned char *reply);
 
 #define MAX_PORT	24
-#define GET_STR(a, b)	(a < ARRAY_SIZE(b) ? b[a] : NULL)
+#define GET_STR(a, b)	((a) < ARRAY_SIZE(b) ? (b)[a] : NULL)
 
 struct port_config {
 	char name[16];
