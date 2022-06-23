@@ -467,18 +467,18 @@ poe_reply_port_ext_config(unsigned char *reply)
 	return 0;
 }
 
-/* 0x2a - Get all port status */
-static int
-poe_cmd_port_overview(void)
+/* 0x28 - Get all all port status */
+static int poe_cmd_4_port_status(uint8_t p1, uint8_t p2, uint8_t p3, uint8_t p4)
 {
-	unsigned char cmd[] = { 0x2a, 0x00, 0x00 };
+	uint8_t cmd[] = { 0x28, 0x00, p1, 1, p2, 1, p3, 1, p4, 1 };
 
 	return poe_cmd_queue(cmd, sizeof(cmd));
 }
 
-static int
-poe_reply_port_overview(unsigned char *reply)
+static int poe_reply_4_port_status(uint8_t *reply)
 {
+	int i, port, pstate;
+
 	const char *status[] = {
 		[0] = "Disabled",
 		[1] = "Searching",
@@ -487,10 +487,20 @@ poe_reply_port_overview(unsigned char *reply)
 		[5] = "Other fault",
 		[6] = "Requesting power",
 	};
-	int i;
 
-	for (i = 0; i < MAX_PORT; i++)
-		state.ports[i].status = GET_STR((reply[3 + i] & 0xf), status);
+	for (i = 2; i < 11; i+=2) {
+		port = reply[i];
+		pstate = reply[i + 1];
+
+		if (port == 0xff) {
+			continue;
+		} else if (port >= MAX_PORT) {
+			ULOG_WARN("Invalid port status packet (port=%d)\n", port);
+			return -1;
+		}
+
+		state.ports[port].status = GET_STR(pstate & 0xf, status);
+	}
 
 	return 0;
 }
@@ -517,7 +527,7 @@ static poe_reply_handler reply_handler[] = {
 	[0x20] = poe_reply_status,
 	[0x23] = poe_reply_power_stats,
 	[0x26] = poe_reply_port_ext_config,
-	[0x2a] = poe_reply_port_overview,
+	[0x28] = poe_reply_4_port_status,
 	[0x30] = poe_reply_port_power_stats,
 };
 
@@ -673,7 +683,9 @@ state_timeout_cb(struct uloop_timeout *t)
 	int i;
 
 	poe_cmd_power_stats();
-	poe_cmd_port_overview();
+
+	for (i = 0; i < config.port_count; i += 4)
+		poe_cmd_4_port_status(i, i + 1, i + 2, i + 3);
 
 	for (i = 0; i < config.port_count; i++) {
 		poe_cmd_port_ext_config(i);
