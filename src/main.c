@@ -41,6 +41,7 @@ struct config {
 	float budget_guard;
 
 	int port_count;
+	uint8_t pse_id_set_budget_mask;
 	struct port_config ports[MAX_PORT];
 };
 
@@ -76,6 +77,7 @@ static struct config config = {
 	.budget = 65,
 	.budget_guard = 7,
 	.port_count = 8,
+	.pse_id_set_budget_mask = 0x01,
 };
 
 static uint16_t read16_be(uint8_t *raw)
@@ -163,6 +165,42 @@ config_load(int init)
 
 	uci_unload(uci, package);
 	uci_free_context(uci);
+}
+
+static char *get_board_compatible(void)
+{
+	char name[128];
+	int fd, ret;
+
+	fd = open("/sys/firmware/devicetree/base/compatible", O_RDONLY);
+	if (fd < 0)
+		return NULL;
+
+	ret = read(fd, name, sizeof(name));
+	if (ret < 0)
+		return NULL;
+
+	close(fd);
+
+	return strndup(name, ret);
+}
+
+static void config_apply_quirks(struct config *config)
+{
+	char *compatible;
+
+	compatible = get_board_compatible();
+	if (!compatible) {
+		ULOG_ERR("Can't get 'compatible': %s\n", strerror(errno));
+		return;
+	}
+
+	if (!strcmp(compatible, "zyxel,gs1900-24hp-v1")) {
+		/* Send budget command to first 8 PSE IDs */
+		config->pse_id_set_budget_mask = 0xff;
+	}
+
+	free(compatible);
 }
 
 static void
@@ -341,10 +379,9 @@ poe_cmd_power_mgmt_mode(unsigned char mode)
 }
 
 /* 0x18 - Set global power budget */
-static int
-poe_cmd_global_power_budget(float budget, float guard)
+static int poe_cmd_global_power_budget(uint8_t pse, float budget, float guard)
 {
-	unsigned char cmd[] = { 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+	uint8_t cmd[] = { 0x18, 0x00, pse, 0x00, 0x00, 0x00, 0x00 };
 
 	write16_be(cmd + 3, budget * 10);
 	write16_be(cmd + 5, guard * 10);
@@ -662,15 +699,27 @@ poe_port_setup(void)
 	return 0;
 }
 
+static void poe_set_power_budget(const struct config *config)
+{
+	unsigned int pse;
+
+	for (pse = 0; pse < 8; pse++) {
+		if (!(config->pse_id_set_budget_mask & (1 << pse)))
+			continue;
+
+		poe_cmd_global_power_budget(pse, config->budget,
+					    config->budget_guard);
+	}
+}
+
 static int
 poe_initial_setup(void)
 {
 	poe_cmd_status();
 	poe_cmd_power_mgmt_mode(2);
 	poe_cmd_port_mapping_enable(false);
-	poe_cmd_global_power_budget(0, 0);
 	poe_cmd_global_port_enable(0);
-	poe_cmd_global_power_budget(config.budget, config.budget_guard);
+	poe_set_power_budget(&config);
 
 	poe_port_setup();
 
@@ -843,6 +892,7 @@ main(int argc, char ** argv)
 	}
 
 	config_load(1);
+	config_apply_quirks(&config);
 
 	uloop_init();
 	ubus_auto_connect(&conn);
