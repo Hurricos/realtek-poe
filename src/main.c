@@ -132,17 +132,18 @@ static void load_port_config(struct uci_context *uci, struct uci_section *s)
 		config.ports[id].power_up_mode = 3;
 }
 
-static void load_global_config(struct uci_context *uci, struct uci_section *s)
+static void load_global_config(struct config *config, struct uci_context *uci,
+			       struct uci_section *s)
 {
 	const char *budget, *guardband;
 
 	budget = uci_lookup_option_string(uci, s, "budget");
 	guardband = uci_lookup_option_string(uci, s, "guard");
 
-	config.budget = budget ? strtof(budget, NULL) : 31.0;
-	config.budget_guard = config.budget / 10;
+	config->budget = budget ? strtof(budget, NULL) : 31.0;
+	config->budget_guard = config->budget / 10;
 	if (guardband)
-		config.budget_guard = strtof(guardband, NULL);
+		config->budget_guard = strtof(guardband, NULL);
 }
 
 static void
@@ -161,7 +162,7 @@ config_load(int init)
 				struct uci_section *s = uci_to_section(e);
 
 				if (!strcmp(s->type, "global"))
-					load_global_config(uci, s);
+					load_global_config(&config, uci, s);
 			}
 		uci_foreach_element(&package->sections, e) {
 			struct uci_section *s = uci_to_section(e);
