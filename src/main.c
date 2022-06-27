@@ -86,6 +86,11 @@ static struct config config = {
 	.pse_id_set_budget_mask = 0x01,
 };
 
+struct realtek_poe_context {
+	struct ubus_auto_conn ubus_conn_handler;
+	struct uloop_timeout state_timeout;
+};
+
 static uint16_t read16_be(uint8_t *raw)
 {
 	return (uint16_t)raw[0] << 8 | raw[1];
@@ -958,12 +963,9 @@ main(int argc, char ** argv)
 {
 	int ch;
 
-	struct uloop_timeout state_timeout = {
-		.cb = state_timeout_cb,
-	};
-
-	struct ubus_auto_conn conn = {
-		.cb = ubus_connect_handler,
+	struct realtek_poe_context poe_ctx = {
+		.ubus_conn_handler.cb = ubus_connect_handler,
+		.state_timeout.cb = state_timeout_cb,
 	};
 
 	ulog_open(ULOG_STDIO | ULOG_SYSLOG, LOG_DAEMON, "realtek-poe");
@@ -981,14 +983,14 @@ main(int argc, char ** argv)
 	config_apply_quirks(&config);
 
 	uloop_init();
-	ubus_auto_connect(&conn);
+	ubus_auto_connect(&poe_ctx.ubus_conn_handler);
 
 	if (poe_stream_open("/dev/ttyS1", &stream, B19200) < 0)
 		return -1;
 
 
 	poe_initial_setup();
-	uloop_timeout_set(&state_timeout, 1000);
+	uloop_timeout_set(&poe_ctx.state_timeout, 1000);
 	uloop_run();
 	uloop_done();
 
