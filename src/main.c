@@ -89,6 +89,7 @@ static struct config config = {
 struct realtek_poe_context {
 	struct ubus_auto_conn ubus_conn_handler;
 	struct uloop_timeout state_timeout;
+	struct ubus_object ubus_poe_object;
 };
 
 static uint16_t read16_be(uint8_t *raw)
@@ -941,19 +942,21 @@ static const struct ubus_method ubus_poe_methods[] = {
 static struct ubus_object_type ubus_poe_object_type =
 	UBUS_OBJECT_TYPE("poe", ubus_poe_methods);
 
-static struct ubus_object ubus_poe_object = {
-	.name = "poe",
-	.type = &ubus_poe_object_type,
-	.methods = ubus_poe_methods,
-	.n_methods = ARRAY_SIZE(ubus_poe_methods),
-};
-
-static void
-ubus_connect_handler(struct ubus_context *ctx)
+static void ubus_connect_handler(struct ubus_context *ctx)
 {
+	struct realtek_poe_context *poe;
+	struct ubus_auto_conn *conn;
 	int ret;
 
-	ret = ubus_add_object(ctx, &ubus_poe_object);
+	conn = container_of(ctx, struct ubus_auto_conn, ctx);
+	poe = container_of(conn, struct realtek_poe_context, ubus_conn_handler);
+
+	poe->ubus_poe_object.name = "poe",
+	poe->ubus_poe_object.type = &ubus_poe_object_type,
+	poe->ubus_poe_object.methods = ubus_poe_methods,
+	poe->ubus_poe_object.n_methods = ARRAY_SIZE(ubus_poe_methods),
+
+	ret = ubus_add_object(ctx, &poe->ubus_poe_object);
 	if (ret)
 		ULOG_ERR("Failed to add object: %s\n", ubus_strerror(ret));
 }
