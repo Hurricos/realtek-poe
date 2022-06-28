@@ -40,7 +40,7 @@ struct config {
 	float budget;
 	float budget_guard;
 
-	int port_count;
+	unsigned int port_count;
 	uint8_t pse_id_set_budget_mask;
 	struct port_config ports[MAX_PORT];
 };
@@ -674,7 +674,7 @@ poe_stream_open(char *dev, struct ustream_fd *s, speed_t speed)
 static int
 poe_port_setup(void)
 {
-	int i;
+	size_t i;
 
 	for (i = 0; i < config.port_count; i++) {
 		if (!config.ports[i].enable) {
@@ -729,7 +729,7 @@ poe_initial_setup(void)
 static void
 state_timeout_cb(struct uloop_timeout *t)
 {
-	int i;
+	size_t i;
 
 	poe_cmd_power_stats();
 
@@ -750,8 +750,8 @@ ubus_poe_info_cb(struct ubus_context *ctx, struct ubus_object *obj,
 		 struct blob_attr *msg)
 {
 	char tmp[16];
+	size_t i;
 	void *c;
-	int i;
 
 	blob_buf_init(&b, 0);
 
