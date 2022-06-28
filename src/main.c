@@ -25,6 +25,7 @@ typedef int (*poe_reply_handler)(unsigned char *reply);
 
 #define MAX_PORT	24
 #define GET_STR(a, b)	((a) < ARRAY_SIZE(b) ? (b)[a] : NULL)
+#define MAX(a, b)	(((a) > (b)) ? (a) : (b))
 
 struct port_config {
 	char name[16];
@@ -58,6 +59,7 @@ struct state {
 	const char *sys_status;
 	unsigned char sys_ext_version;
 	float power_consumption;
+	unsigned int num_detected_ports;
 
 	struct port_state ports[MAX_PORT];
 };
@@ -76,7 +78,6 @@ static struct blob_buf b;
 static struct config config = {
 	.budget = 65,
 	.budget_guard = 7,
-	.port_count = 8,
 	.pse_id_set_budget_mask = 0x01,
 };
 
@@ -112,6 +113,7 @@ static void load_port_config(struct uci_context *uci, struct uci_section *s)
 		ULOG_ERR("invalid port id=%lu for %s", id, name);
 		return;
 	}
+	config.port_count = MAX(config.port_count, id);
 	id--;
 
 	strncpy(config.ports[id].name, name, sizeof(config.ports[id].name));
@@ -454,7 +456,7 @@ poe_reply_status(unsigned char *reply)
 	};
 
 	state.sys_mode = GET_STR(reply[2], mode);
-	config.port_count = reply[3];
+	state.num_detected_ports = reply[3];
 	state.sys_version = reply[7];
 	state.sys_mcu = GET_STR(reply[8], mcu);
 	state.sys_status = GET_STR(reply[9], status);
