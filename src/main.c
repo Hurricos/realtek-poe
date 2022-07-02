@@ -74,16 +74,17 @@ struct cmd {
 	unsigned int num_retries;
 };
 
-static struct ustream_fd stream;
 static LIST_HEAD(cmd_pending);
 static unsigned char cmd_seq;
 static struct state state;
 static struct blob_buf b;
 
 struct realtek_poe_context {
+	const char *name;
 	struct ubus_auto_conn ubus_conn_handler;
 	struct uloop_timeout state_timeout;
 	struct ubus_object ubus_poe_object;
+	struct ustream_fd stream;
 	struct config config;
 };
 
@@ -223,20 +224,18 @@ static void log_packet(int log_level, const char *prefix, const uint8_t d[12])
 		     d[6], d[7], d[8], d[9], d[10], d[11]);
 }
 
-static int
-poe_cmd_send(struct cmd *cmd)
+static int poe_cmd_send(struct ustream *s, struct cmd *cmd)
 {
 	if (state.mcu_error_timeout.pending)
 		return -EBUSY;
 
 	log_packet(LOG_DEBUG, "TX ->", cmd->cmd);
-	ustream_write(&stream.stream, (char *)cmd->cmd, 12, false);
+	ustream_write(s, (char *)cmd->cmd, 12, false);
 
 	return 0;
 }
 
-static int
-poe_cmd_next(void)
+static int poe_cmd_next(struct ustream *s)
 {
 	struct cmd *cmd;
 
@@ -245,7 +244,7 @@ poe_cmd_next(void)
 
 	cmd = list_first_entry(&cmd_pending, struct cmd, list);
 
-	return poe_cmd_send(cmd);
+	return poe_cmd_send(s, cmd);
 }
 
 static int
@@ -677,7 +676,7 @@ poe_stream_msg_cb(struct ustream *s, int bytes)
 		return;
 	poe_reply_consume(reply);
 	ustream_consume(s, 12);
-	poe_cmd_next();
+	poe_cmd_next(s);
 }
 
 static void
@@ -1002,7 +1001,7 @@ main(int argc, char ** argv)
 	uloop_init();
 	ubus_auto_connect(&poe_ctx.ubus_conn_handler);
 
-	if (poe_stream_open("/dev/ttyS1", &stream, B19200) < 0)
+	if (poe_stream_open("/dev/ttyS1", &poe_ctx.stream, B19200) < 0)
 		return -1;
 
 
