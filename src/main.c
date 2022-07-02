@@ -36,8 +36,6 @@ struct port_config {
 };
 
 struct config {
-	int debug;
-
 	float budget;
 	float budget_guard;
 
@@ -205,24 +203,18 @@ static void config_apply_quirks(struct config *config)
 	free(compatible);
 }
 
-static void
-poe_cmd_dump(char *type, unsigned char *data)
+static void log_packet(int log_level, const char *prefix, const uint8_t d[12])
 {
-	int i;
-
-	if (!config.debug)
-		return;
-
-	fprintf(stderr, "%s", type);
-	for (i = 0; i < 12; i++)
-		fprintf(stderr, " %02x", data[i]);
-	fprintf(stderr, "\n");
+	ulog(log_level,
+	     "%s %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+	     prefix, d[0], d[1], d[2], d[3], d[4], d[5],
+		     d[6], d[7], d[8], d[9], d[10], d[11]);
 }
 
 static int
 poe_cmd_send(struct cmd *cmd)
 {
-	poe_cmd_dump("TX ->", cmd->cmd);
+	log_packet(LOG_DEBUG, "TX ->", cmd->cmd);
 	ustream_write(&stream.stream, (char *)cmd->cmd, 12, false);
 
 	return 0;
@@ -562,7 +554,7 @@ poe_reply_consume(unsigned char *reply)
 	struct cmd *cmd = NULL;
 	unsigned char sum = 0, i;
 
-	poe_cmd_dump("RX <-", reply);
+	log_packet(LOG_DEBUG, "RX <-", reply);
 
 	if (list_empty(&cmd_pending)) {
 		ULOG_ERR("received unsolicited reply\n");
@@ -645,7 +637,7 @@ poe_stream_open(char *dev, struct ustream_fd *s, speed_t speed)
 
 	ret = tcsetattr(tty, TCSANOW, &tio);
 	if (ret) {
-		perror("Can't configure serial port");
+		ULOG_ERR("Can't configure serial port: %s", strerror(errno));
 		return -errno;
 	}
 
@@ -851,7 +843,7 @@ ubus_connect_handler(struct ubus_context *ctx)
 
 	ret = ubus_add_object(ctx, &ubus_poe_object);
 	if (ret)
-		fprintf(stderr, "Failed to add object: %s\n", ubus_strerror(ret));
+		ULOG_ERR("Failed to add object: %s\n", ubus_strerror(ret));
 }
 
 int
@@ -873,7 +865,7 @@ main(int argc, char ** argv)
 	while ((ch = getopt(argc, argv, "d")) != -1) {
 		switch (ch) {
 		case 'd':
-			config.debug = 1;
+			ulog_threshold(LOG_DEBUG);
 			break;
 		}
 	}
