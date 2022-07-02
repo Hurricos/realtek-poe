@@ -36,8 +36,6 @@ struct port_config {
 };
 
 struct config {
-	int debug;
-
 	float budget;
 	float budget_guard;
 
@@ -74,7 +72,9 @@ static struct ustream_fd stream;
 static LIST_HEAD(cmd_pending);
 static unsigned char cmd_seq;
 static struct state state;
+static unsigned int debug;
 static struct blob_buf b;
+
 
 static struct config config = {
 	.budget = 65,
@@ -212,7 +212,7 @@ poe_cmd_dump(char *type, unsigned char *data)
 	char boog[50];
 	int i, lex = 0;
 
-	if (!config.debug)
+	if (!debug)
 		return;
 
 	for (i = 0; i < 12; i++)
@@ -828,7 +828,7 @@ ubus_poe_sendframe_cb(struct ubus_context *ctx, struct ubus_object *obj,
 	unsigned long byte_val;
 	uint8_t cmd[9];
 
-	if (!config.debug)
+	if (!debug)
 		return UBUS_STATUS_PERMISSION_DENIED;
 
 	blobmsg_parse(ubus_poe_sendframe_policy,
@@ -922,7 +922,7 @@ main(int argc, char ** argv)
 	while ((ch = getopt(argc, argv, "d")) != -1) {
 		switch (ch) {
 		case 'd':
-			config.debug = 1;
+			debug = 1;
 			ulog_threshold(LOG_DEBUG);
 			break;
 		}
