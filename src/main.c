@@ -75,6 +75,7 @@ struct cmd {
 
 static struct ustream_fd stream;
 static LIST_HEAD(cmd_pending);
+static size_t num_pending;
 static unsigned char cmd_seq;
 static struct state state;
 static struct blob_buf b;
@@ -261,6 +262,7 @@ poe_cmd_queue(unsigned char *_cmd, int len)
 		cmd->cmd[11] += cmd->cmd[i];
 
 	list_add_tail(&cmd->list, &cmd_pending);
+	num_pending++;
 
 	if (empty)
 		return poe_cmd_send(cmd);
@@ -611,6 +613,7 @@ poe_reply_consume(unsigned char *reply)
 
 	cmd = list_first_entry(&cmd_pending, struct cmd, list);
 	list_del(&cmd->list);
+	num_pending--;
 	cmd_id = cmd->cmd[0];
 	cmd_seq = cmd->cmd[1];
 
@@ -826,6 +829,7 @@ state_timeout_cb(struct uloop_timeout *t)
 		poe_cmd_port_power_stats(i);
 	}
 
+	ULOG_INFO("TIMEOUT rearmed (%zu pending)\n", num_pending);
 	uloop_timeout_set(t, 2 * 1000);
 }
 
