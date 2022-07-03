@@ -555,6 +555,7 @@ poe_reply_consume(unsigned char *reply)
 {
 	struct cmd *cmd = NULL;
 	unsigned char sum = 0, i;
+	uint8_t cmd_id, cmd_seq;
 
 	log_packet(LOG_DEBUG, "RX <-", reply);
 
@@ -565,26 +566,29 @@ poe_reply_consume(unsigned char *reply)
 
 	cmd = list_first_entry(&cmd_pending, struct cmd, list);
 	list_del(&cmd->list);
+	cmd_id = cmd->cmd[0];
+	cmd_seq = cmd->cmd[1];
 
 	for (i = 0; i < 11; i++)
 		sum += reply[i];
 
 	if (reply[11] != sum) {
 		ULOG_DBG("received reply with bad checksum\n");
-		return -1;
-	}
-
-	if ((reply[0] != cmd->cmd[0]) || (reply[0] > ARRAY_SIZE(reply_handler))) {
-		ULOG_DBG("received reply with bad command id\n");
-		return -1;
-	}
-
-	if (reply[1] != cmd->cmd[1]) {
-		ULOG_DBG("received reply with bad sequence number\n");
+		free(cmd);
 		return -1;
 	}
 
 	free(cmd);
+
+	if ((reply[0] != cmd_id) || (reply[0] > ARRAY_SIZE(reply_handler))) {
+		ULOG_DBG("received reply with bad command id\n");
+		return -1;
+	}
+
+	if (reply[1] != cmd_seq) {
+		ULOG_DBG("received reply with bad sequence number\n");
+		return -1;
+	}
 
 	if (reply_handler[reply[0]]) {
 	  return reply_handler[reply[0]](reply);
