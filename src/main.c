@@ -605,6 +605,8 @@ poe_reply_consume(unsigned char *reply)
 
 	if (reply[11] != sum) {
 		ULOG_DBG("received reply with bad checksum\n");
+		log_packet(LOG_NOTICE, "\tCMD:   ", cmd->cmd);
+		log_packet(LOG_NOTICE, "\treply: ", reply);
 		free(cmd);
 		return -1;
 	}
@@ -618,13 +620,21 @@ poe_reply_consume(unsigned char *reply)
 
 	if ((reply[0] != cmd_id) || (reply[0] > ARRAY_SIZE(reply_handler))) {
 		ULOG_DBG("received reply with bad command id\n");
+		log_packet(LOG_NOTICE, "\tCMD:   ", cmd->cmd);
+		log_packet(LOG_NOTICE, "\treply: ", reply);
+		free(cmd);
 		return -1;
 	}
 
 	if (reply[1] != cmd_seq) {
 		ULOG_DBG("received reply with bad sequence number\n");
+		log_packet(LOG_NOTICE, "\tCMD:   ", cmd->cmd);
+		log_packet(LOG_NOTICE, "\treply: ", reply);
+		free(cmd);
 		return -1;
 	}
+
+	free(cmd);
 
 	if (reply_handler[reply[0]]) {
 	  return reply_handler[reply[0]](reply);
