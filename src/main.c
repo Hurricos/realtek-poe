@@ -285,20 +285,6 @@ static int poe_cmd_port_mapping_enable(bool enable)
 	return poe_cmd_queue(cmd, sizeof(cmd));
 }
 
-/* 0x06 - Set global port enable
- *	0: Disable PSE Functionality on all Ports
- *	1: Enable PSE Functionality on all Ports
- *	2: Enable Force power Functionality on all ports
- *	3: Enable Force Power with Disconnect Functionality on all Ports
- */
-static int
-poe_cmd_global_port_enable(unsigned char enable)
-{
-	unsigned char cmd[] = { 0x06, 0x00, enable };
-
-	return poe_cmd_queue(cmd, sizeof(cmd));
-}
-
 /* 0x10 - Set port detection type
  *	1: Legacy Capacitive Detection only
  *	2: IEEE 802.3af 4-Point Detection only (Default)
@@ -720,7 +706,6 @@ poe_initial_setup(void)
 	poe_cmd_status();
 	poe_cmd_power_mgmt_mode(2);
 	poe_cmd_port_mapping_enable(false);
-	poe_cmd_global_port_enable(0);
 	poe_set_power_budget(&config);
 
 	poe_port_setup();
