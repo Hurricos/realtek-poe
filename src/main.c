@@ -26,6 +26,7 @@ typedef int (*poe_reply_handler)(unsigned char *reply);
 /* Careful with this; Only works for set_detection/disconnect_type commands. */
 #define PORT_ID_ALL	0x7f
 #define MAX_PORT	24
+#define MAX_RETRIES	5
 #define GET_STR(a, b)	((a) < ARRAY_SIZE(b) ? (b)[a] : NULL)
 #define MAX(a, b)	(((a) > (b)) ? (a) : (b))
 
@@ -63,11 +64,13 @@ struct state {
 	unsigned int num_detected_ports;
 
 	struct port_state ports[MAX_PORT];
+	struct uloop_timeout mcu_error_timeout;
 };
 
 struct cmd {
 	struct list_head list;
 	unsigned char cmd[12];
+	unsigned int num_retries;
 };
 
 static struct ustream_fd stream;
@@ -218,6 +221,9 @@ static void log_packet(int log_level, const char *prefix, const uint8_t d[12])
 static int
 poe_cmd_send(struct cmd *cmd)
 {
+	if (state.mcu_error_timeout.pending)
+		return -EBUSY;
+
 	log_packet(LOG_DEBUG, "TX ->", cmd->cmd);
 	ustream_write(&stream.stream, (char *)cmd->cmd, 12, false);
 
@@ -548,6 +554,11 @@ static poe_reply_handler reply_handler[] = {
 	[0x30] = poe_reply_port_power_stats,
 };
 
+static void mcu_clear_timeout(struct uloop_timeout *t)
+{
+	poe_cmd_next();
+}
+
 static void handle_poe_f0_reply(struct cmd *cmd, uint8_t *reply)
 {
 	const char *reason;
@@ -561,9 +572,27 @@ static void handle_poe_f0_reply(struct cmd *cmd, uint8_t *reply)
 	reason = GET_STR((uint8_t)(reply[0] - 0xf0), reasons);
 	reason = reason ? reason : "unknown";
 
-	ULOG_NOTE("MCU rejected command: %s\n", reason);
-	log_packet(LOG_NOTICE, "\tCMD:   ", cmd->cmd);
-	log_packet(LOG_NOTICE, "\treply: ", reply);
+	/* Log the first reply, then only log complete failures. */
+	if (cmd->num_retries == 0) {
+		ULOG_NOTE("MCU rejected command: %s\n", reason);
+		log_packet(LOG_NOTICE, "\tCMD:   ", cmd->cmd);
+		log_packet(LOG_NOTICE, "\treply: ", reply);
+	}
+
+	if (!state.mcu_error_timeout.pending) {
+		if (++cmd->num_retries > MAX_RETRIES) {
+			ULOG_ERR("Aborting request (%02x) after %d attempts\n",
+				 cmd->cmd[0], cmd->num_retries);
+			free(cmd);
+			return;
+		}
+
+		/* Wait for the MCU to recover */
+		state.mcu_error_timeout.cb = mcu_clear_timeout;
+		uloop_timeout_set(&state.mcu_error_timeout, 100);
+	}
+
+	list_add(&cmd->list, &cmd_pending);
 }
 
 static int
@@ -596,7 +625,6 @@ poe_reply_consume(unsigned char *reply)
 
 	if ((reply[0] & 0xf0) == 0xf0) {
 		handle_poe_f0_reply(cmd, reply);
-		free(cmd);
 		return -1;
 	}
 
