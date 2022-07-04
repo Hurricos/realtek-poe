@@ -789,6 +789,8 @@ poe_initial_setup(void)
 	poe_set_power_budget(&config);
 
 	poe_port_setup();
+	poe_port_setup();
+	poe_port_setup();
 
 	return 0;
 }
@@ -799,6 +801,22 @@ state_timeout_cb(struct uloop_timeout *t)
 	size_t i;
 
 	poe_cmd_power_stats();
+
+	for (i = 0; i < config.port_count; i += 4)
+		poe_cmd_4_port_status(i, i + 1, i + 2, i + 3);
+
+	for (i = 0; i < config.port_count; i++) {
+		poe_cmd_port_ext_config(i);
+		poe_cmd_port_power_stats(i);
+	}
+
+	for (i = 0; i < config.port_count; i += 4)
+		poe_cmd_4_port_status(i, i + 1, i + 2, i + 3);
+
+	for (i = 0; i < config.port_count; i++) {
+		poe_cmd_port_ext_config(i);
+		poe_cmd_port_power_stats(i);
+	}
 
 	for (i = 0; i < config.port_count; i += 4)
 		poe_cmd_4_port_status(i, i + 1, i + 2, i + 3);
