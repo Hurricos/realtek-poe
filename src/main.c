@@ -548,6 +548,24 @@ static poe_reply_handler reply_handler[] = {
 	[0x30] = poe_reply_port_power_stats,
 };
 
+static void handle_poe_f0_reply(struct cmd *cmd, uint8_t *reply)
+{
+	const char *reason;
+
+	const char *reasons[] = {
+		[0xd] = "request-incomplete",
+		[0xe] = "request-bad-checksum",
+		[0xf] = "not-ready",
+	};
+
+	reason = GET_STR((uint8_t)(reply[0] - 0xf0), reasons);
+	reason = reason ? reason : "unknown";
+
+	ULOG_NOTE("MCU rejected command: %s\n", reason);
+	log_packet(LOG_NOTICE, "\tCMD:   ", cmd->cmd);
+	log_packet(LOG_NOTICE, "\treply: ", reply);
+}
+
 static int
 poe_reply_consume(unsigned char *reply)
 {
@@ -572,6 +590,12 @@ poe_reply_consume(unsigned char *reply)
 
 	if (reply[11] != sum) {
 		ULOG_DBG("received reply with bad checksum\n");
+		free(cmd);
+		return -1;
+	}
+
+	if ((reply[0] & 0xf0) == 0xf0) {
+		handle_poe_f0_reply(cmd, reply);
 		free(cmd);
 		return -1;
 	}
