@@ -26,6 +26,7 @@ typedef int (*poe_reply_handler)(unsigned char *reply);
 /* Careful with this; Only works for set_detection/disconnect_type commands. */
 #define PORT_ID_ALL	0x7f
 #define MAX_PORT	24
+#define MAX_RETRIES	10
 #define GET_STR(a, b)	((a) < ARRAY_SIZE(b) ? (b)[a] : NULL)
 #define MAX(a, b)	(((a) > (b)) ? (a) : (b))
 
@@ -72,6 +73,7 @@ struct cmd {
 
 static struct ustream_fd stream;
 static LIST_HEAD(cmd_pending);
+static size_t num_retries;
 static unsigned char cmd_seq;
 static struct state state;
 static struct blob_buf b;
@@ -561,9 +563,22 @@ static void handle_poe_f0_reply(struct cmd *cmd, uint8_t *reply)
 	reason = GET_STR((uint8_t)(reply[0] - 0xf0), reasons);
 	reason = reason ? reason : "unknown";
 
-	ULOG_NOTE("MCU rejected command: %s\n", reason);
-	log_packet(LOG_NOTICE, "\tCMD:   ", cmd->cmd);
-	log_packet(LOG_NOTICE, "\treply: ", reply);
+	/* Log the first reply, then only log complete failures. */
+	if (num_retries == 0) {
+		ULOG_NOTE("MCU didn't like our command because %s\n", reason);
+		log_packet(LOG_NOTICE, "\tCMD:   ", cmd->cmd);
+		log_packet(LOG_NOTICE, "\treply: ", reply);
+	}
+
+	if (++num_retries > MAX_RETRIES) {
+		ULOG_ERR("Aborting request (%02x) after %d attempts\n",
+			 cmd->cmd[0], num_retries);
+		num_retries = 0;
+		free(cmd);
+		return;
+	}
+
+	list_add(&cmd->list, &cmd_pending);
 }
 
 static int
@@ -596,7 +611,6 @@ poe_reply_consume(unsigned char *reply)
 
 	if ((reply[0] & 0xf0) == 0xf0) {
 		handle_poe_f0_reply(cmd, reply);
-		free(cmd);
 		return -1;
 	}
 
