@@ -29,7 +29,8 @@ typedef int (*poe_reply_handler)(unsigned char *reply);
 
 struct port_config {
 	char name[16];
-	unsigned char enable;
+	unsigned int valid : 1;
+	unsigned int enable : 1;
 	unsigned char priority;
 	unsigned char power_up_mode;
 	unsigned char power_budget;
@@ -117,6 +118,7 @@ static void load_port_config(struct uci_context *uci, struct uci_section *s)
 	id--;
 
 	strncpy(config.ports[id].name, name, sizeof(config.ports[id].name));
+	config.ports[id].valid = 1;
 	config.ports[id].enable = enable ? !strcmp(enable, "1") : 0;
 	config.ports[id].priority = priority ? strtoul(priority, NULL, 0) : 0;
 	if (config.ports[id].priority > 3)
@@ -754,7 +756,7 @@ ubus_poe_info_cb(struct ubus_context *ctx, struct ubus_object *obj,
 	for (i = 0; i < config.port_count; i++) {
 		void *p;
 
-		if (!config.ports[i].enable)
+		if (!config.ports[i].valid)
 			continue;
 
 		p = blobmsg_open_table(&b, config.ports[i].name);
