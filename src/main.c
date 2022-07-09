@@ -262,6 +262,14 @@ poe_cmd_queue(unsigned char *_cmd, int len)
 	return 0;
 }
 
+static int poet_cmd_4_port(uint8_t cmd_id, uint8_t port[4], uint8_t data[4])
+{
+	uint8_t cmd[] = { cmd_id, 0x00, port[0], data[0], port[1], data[1],
+					port[2], data[2], port[3], data[3] };
+
+	return poe_cmd_queue(cmd, sizeof(cmd));
+}
+
 /* 0x00 - Set port enable
  *	0: Disable
  *	1: Enable
@@ -300,12 +308,9 @@ poe_cmd_port_detection_type(unsigned char port, unsigned char type)
  *	0: Disable
  *	1: Enable
  */
-static int
-poe_cmd_port_classification(unsigned char port, unsigned char classification)
+static int poe_cmd_port_classification(uint8_t port[4], uint8_t enable[4])
 {
-	unsigned char cmd[] = { 0x11, 0x00, port, classification };
-
-	return poe_cmd_queue(cmd, sizeof(cmd));
+	return poet_cmd_4_port(0x11, port, enable);
 }
 
 /* 0x13 - Set port disconnect type
@@ -328,12 +333,9 @@ poe_cmd_port_disconnect_type(unsigned char port, unsigned char type)
  *	1: Class based. The power limit for class 4 devices is determined by the high power limit.
  *	2: User defined
  */
-static int
-poe_cmd_port_power_limit_type(unsigned char port, unsigned char type)
+static int poe_cmd_port_power_limit_type(uint8_t port[4], uint8_t limit[4])
 {
-	unsigned char cmd[] = { 0x15, 0x00, port, type };
-
-	return poe_cmd_queue(cmd, sizeof(cmd));
+	return poet_cmd_4_port(0x15, port, limit);
 }
 
 /* 0x16 - Set port power budget
@@ -379,12 +381,9 @@ static int poe_cmd_global_power_budget(uint8_t pse, float budget, float guard)
  *	2: High
  *	3: Critical
  */
-static int
-poe_set_port_priority(unsigned char port, unsigned char priority)
+static int poe_set_port_priority(uint8_t port[4], uint8_t priority[4])
 {
-	unsigned char cmd[] = { 0x1a, 0x00, port, priority };
-
-	return poe_cmd_queue(cmd, sizeof(cmd));
+	return poet_cmd_4_port(0x1a, port, priority);
 }
 
 /* 0x1c - Set port power-up mode
@@ -393,12 +392,9 @@ poe_set_port_priority(unsigned char port, unsigned char priority)
  *	2: pre-PoE+
  *	3: PoE+
  */
-static int
-poe_set_port_power_up_mode(unsigned char port, unsigned char mode)
+static int poe_set_port_power_up_mode(uint8_t port[4], uint8_t mode[4])
 {
-	unsigned char cmd[] = { 0x1c, 0x00, port, mode };
-
-	return poe_cmd_queue(cmd, sizeof(cmd));
+	return poet_cmd_4_port(0x1c, port, mode);
 }
 
 /* 0x20 - Get system info */
@@ -683,6 +679,43 @@ poe_stream_open(char *dev, struct ustream_fd *s, speed_t speed)
 	return 0;
 }
 
+static int poet_setup(const struct port_config *ports, size_t num_ports)
+{
+	uint8_t port_ids[4], priorities[4], powerup_mode[4], limit_type[4];
+	uint8_t enable_all[4] = {1, 1, 1, 1};
+	size_t i = 0, num_okay = 0;
+
+	do {
+		for ( ; i < num_ports; i++) {
+			if (!ports[i].enable)
+				continue;
+
+			port_ids[num_okay] = i;
+			priorities[num_okay] = ports[i].priority;
+			powerup_mode[num_okay] = ports[i].power_up_mode;
+			limit_type[num_okay] = (ports[i].power_budget) ? 2 : 1;
+
+			if (++num_okay == 4)
+				break;
+		};
+
+		memset(enable_all + num_okay, 0xff, 4 - num_okay);
+		memset(port_ids + num_okay, 0xff, 4 - num_okay);
+		memset(priorities + num_okay, 0xff, 4 - num_okay);
+		memset(powerup_mode + num_okay, 0xff, 4 - num_okay);
+		memset(limit_type + num_okay, 0xff, 4 - num_okay);
+
+		poe_set_port_priority(port_ids, priorities);
+		poe_set_port_power_up_mode(port_ids, powerup_mode);
+		poe_cmd_port_classification(port_ids, enable_all);
+		poe_cmd_port_power_limit_type(port_ids, limit_type);
+
+		num_okay = 0;
+	} while (++i < num_ports);
+
+	return 0;
+}
+
 static int
 poe_port_setup(void)
 {
@@ -692,22 +725,16 @@ poe_port_setup(void)
 	poe_cmd_port_detection_type(PORT_ID_ALL, 3);
 
 	for (i = 0; i < config.port_count; i++) {
-		if (!config.ports[i].enable) {
-			poe_cmd_port_enable(i, 0);
+		if (!config.ports[i].enable || !config.ports[i].power_budget)
 			continue;
-		}
 
-		poe_set_port_priority(i, config.ports[i].priority);
-		poe_set_port_power_up_mode(i, config.ports[i].power_up_mode);
-		if (config.ports[i].power_budget) {
-			poe_cmd_port_power_budget(i, config.ports[i].power_budget);
-			poe_cmd_port_power_limit_type(i, 2);
-		} else {
-			poe_cmd_port_power_limit_type(i, 1);
-		}
-		poe_cmd_port_classification(i, 1);
-		poe_cmd_port_enable(i, 1);
+		poe_cmd_port_power_budget(i, config.ports[i].power_budget);
 	}
+
+	poet_setup(config.ports, config.port_count);
+
+	for (i = 0; i < config.port_count; i++)
+		poe_cmd_port_enable(i, !!config.ports[i].enable);
 
 	return 0;
 }
