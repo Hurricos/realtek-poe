@@ -23,6 +23,8 @@
 
 typedef int (*poe_reply_handler)(unsigned char *reply);
 
+/* Careful with this; Only works for set_detection/disconnect_type commands. */
+#define PORT_ID_ALL	0x7f
 #define MAX_PORT	24
 #define GET_STR(a, b)	((a) < ARRAY_SIZE(b) ? (b)[a] : NULL)
 #define MAX(a, b)	(((a) > (b)) ? (a) : (b))
@@ -686,6 +688,9 @@ poe_port_setup(void)
 {
 	size_t i;
 
+	poe_cmd_port_disconnect_type(PORT_ID_ALL, 2);
+	poe_cmd_port_detection_type(PORT_ID_ALL, 3);
+
 	for (i = 0; i < config.port_count; i++) {
 		if (!config.ports[i].enable) {
 			poe_cmd_port_enable(i, 0);
@@ -700,9 +705,7 @@ poe_port_setup(void)
 		} else {
 			poe_cmd_port_power_limit_type(i, 1);
 		}
-		poe_cmd_port_disconnect_type(i, 2);
 		poe_cmd_port_classification(i, 1);
-		poe_cmd_port_detection_type(i, 3);
 		poe_cmd_port_enable(i, 1);
 	}
 
