@@ -482,6 +482,14 @@ poe_reply_power_stats(unsigned char *reply)
 	return 0;
 }
 
+/* 0x25 - Get port config */
+static int poe_cmd_port_config(unsigned char port)
+{
+	unsigned char cmd[] = { 0x25, 0x00, port };
+
+	return poe_cmd_queue(cmd, sizeof(cmd));
+}
+
 /* 0x26 - Get extended port config */
 static int
 poe_cmd_port_ext_config(unsigned char port)
@@ -824,6 +832,27 @@ state_timeout_cb(struct uloop_timeout *t)
 		poe_cmd_4_port_status(i, i + 1, i + 2, i + 3);
 
 	for (i = 0; i < config.port_count; i++) {
+		poe_cmd_port_config(i);
+		poe_cmd_port_ext_config(i);
+		poe_cmd_port_power_stats(i);
+	}
+
+
+	for (i = 0; i < config.port_count; i += 4)
+		poe_cmd_4_port_status(i, i + 1, i + 2, i + 3);
+
+	for (i = 0; i < config.port_count; i++) {
+		poe_cmd_port_config(i);
+		poe_cmd_port_ext_config(i);
+		poe_cmd_port_power_stats(i);
+	}
+
+
+	for (i = 0; i < config.port_count; i += 4)
+		poe_cmd_4_port_status(i, i + 1, i + 2, i + 3);
+
+	for (i = 0; i < config.port_count; i++) {
+		poe_cmd_port_config(i);
 		poe_cmd_port_ext_config(i);
 		poe_cmd_port_power_stats(i);
 	}
