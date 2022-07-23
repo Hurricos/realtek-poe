@@ -16,8 +16,9 @@ FIND_LIBRARY(uci NAMES uci)
 FIND_LIBRARY(ubox NAMES ubox)
 FIND_PATH(uci_include_dir NAMES uci.h)
 FIND_PATH(ubus_include_dir NAMES libubus.h)
+FIND_PATH(i2c_include_dir NAMES i2c.h)
 FIND_PATH(ubox_include_dir NAMES libubox/usock.h)
-INCLUDE_DIRECTORIES(${ubox_include_dir} ${ubus_include_dir} ${uci_include_dir})
+INCLUDE_DIRECTORIES(${ubox_include_dir} ${ubus_include_dir} ${uci_include_dir} $(i2c_include_dir))
 
 ADD_EXECUTABLE(realtek-poe ${SOURCES})
 

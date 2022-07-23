@@ -9,7 +9,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <getopt.h>
-
+#include <linux/i2c.h>
+#include <linux/i2c-dev.h>
+#include <sys/ioctl.h>
 #include <libubox/ustream.h>
 #include <libubox/uloop.h>
 #include <libubox/list.h>
@@ -41,6 +43,8 @@ struct port_config {
 struct config {
 	float budget;
 	float budget_guard;
+	int i2c_bus;
+	int i2c_addr;
 
 	unsigned int port_count;
 	uint8_t pse_id_set_budget_mask;
@@ -71,6 +75,7 @@ struct cmd {
 };
 
 static struct ustream_fd stream;
+static int i2c_file;
 static LIST_HEAD(cmd_pending);
 static unsigned char cmd_seq;
 static struct state state;
@@ -81,6 +86,8 @@ static struct config config = {
 	.budget_guard = 7,
 	.pse_id_set_budget_mask = 0x01,
 };
+
+static int poe_reply_consume(unsigned char *reply);
 
 static uint16_t read16_be(uint8_t *raw)
 {
@@ -130,15 +137,26 @@ static void load_port_config(struct uci_context *uci, struct uci_section *s)
 
 static void load_global_config(struct uci_context *uci, struct uci_section *s)
 {
-	const char *budget, *guardband;
+	const char *budget, *guardband, *i2c_bus, *i2c_addr;
 
 	budget = uci_lookup_option_string(uci, s, "budget");
 	guardband = uci_lookup_option_string(uci, s, "guard");
+	i2c_bus = uci_lookup_option_string(uci, s, "i2c_bus");
+	i2c_addr = uci_lookup_option_string(uci, s, "i2c_addr");
 
 	config.budget = budget ? strtof(budget, NULL) : 31.0;
 	config.budget_guard = config.budget / 10;
 	if (guardband)
 		config.budget_guard = strtof(guardband, NULL);
+	if (i2c_bus) {
+		config.i2c_bus = strtol(i2c_bus, NULL, 10);
+		if (i2c_addr)
+			config.i2c_addr = strtol(i2c_addr, NULL, 10);
+		else
+			config.i2c_addr = 0x20; // I2C address on both known devices
+	} else {
+		config.i2c_bus = -1;
+	}
 }
 
 static void
@@ -225,6 +243,35 @@ poe_cmd_send(struct cmd *cmd)
 }
 
 static int
+poe_i2c_cmd_send(struct cmd *cmd, unsigned char *reply, int len)
+{
+	int nmsgs_sent;
+        struct i2c_msg msgs[2];
+	struct i2c_rdwr_ioctl_data rdwr;
+
+	log_packet(LOG_DEBUG, "I2C TX ->", cmd->cmd);
+
+	msgs[0].addr = config.i2c_addr;
+	msgs[0].buf = cmd->cmd;
+	msgs[0].flags = 0;
+	msgs[0].len = 12;
+
+	msgs[1].addr = config.i2c_addr;
+	msgs[1].buf = reply;
+	msgs[1].flags = I2C_M_RD;
+	msgs[1].len = len;
+
+	rdwr.msgs = msgs;
+	rdwr.nmsgs = 2;
+
+	nmsgs_sent = ioctl(i2c_file, I2C_RDWR, &rdwr);
+	if (nmsgs_sent != 2)
+		ULOG_NOTE("Could not complete I2C send/receive, messages sent: %d\n", nmsgs_sent);
+
+	return 0;
+}
+
+static int
 poe_cmd_next(void)
 {
 	struct cmd *cmd;
@@ -242,6 +289,7 @@ poe_cmd_queue(unsigned char *_cmd, int len)
 {
 	int i, empty = list_empty(&cmd_pending);
 	struct cmd *cmd = malloc(sizeof(*cmd));
+	unsigned char reply[12];
 
 	memset(cmd, 0, sizeof(*cmd));
 	memset(cmd->cmd, 0xff, 12);
@@ -256,8 +304,13 @@ poe_cmd_queue(unsigned char *_cmd, int len)
 
 	list_add_tail(&cmd->list, &cmd_pending);
 
-	if (empty)
+	if (!empty)
+		return 0;
+	if (config.i2c_bus < 0)
 		return poe_cmd_send(cmd);
+
+	poe_i2c_cmd_send(cmd, reply, sizeof(reply));
+	poe_reply_consume(reply);
 
 	return 0;
 }
@@ -603,12 +656,12 @@ poe_reply_consume(unsigned char *reply)
 	free(cmd);
 
 	if ((reply[0] != cmd_id) || (reply[0] > ARRAY_SIZE(reply_handler))) {
-		ULOG_DBG("received reply with bad command id\n");
+		ULOG_INFO("received reply with bad command id\n");
 		return -1;
 	}
 
 	if (reply[1] != cmd_seq) {
-		ULOG_DBG("received reply with bad sequence number\n");
+		ULOG_INFO("received reply with bad sequence number\n");
 		return -1;
 	}
 
@@ -677,6 +730,37 @@ poe_stream_open(char *dev, struct ustream_fd *s, speed_t speed)
 	tcflush(tty, TCIFLUSH);
 
 	return 0;
+}
+
+static int
+i2c_addr_open(int i2c_bus, char *filename, size_t size)
+{
+	int file, len;
+
+	len = snprintf(filename, size, "/dev/i2c-%d", i2c_bus);
+        if (len >= (int)size) {
+		ULOG_ERR("%s: path truncated\n", filename);
+                return -EOVERFLOW;
+        }
+        file = open(filename, O_RDWR);
+
+	if (file < 0)
+		ULOG_ERR("Error: Could not open file `%s': %s\n", filename, strerror(errno));
+
+	// TODO: check needed I2C functionality
+	return file;
+}
+
+static int
+i2c_set_slave_addr(int file, int address)
+{
+        if (ioctl(file, I2C_SLAVE, address) < 0) {
+                ULOG_ERR("Error: Could not set address to 0x%02x: %s\n",
+                         address, strerror(errno));
+                return -errno;
+        }
+
+        return 0;
 }
 
 static int poet_setup(const struct port_config *ports, size_t num_ports)
@@ -910,6 +994,7 @@ int
 main(int argc, char ** argv)
 {
 	int ch;
+	char i2c_dev_filename[20];
 
 	struct uloop_timeout state_timeout = {
 		.cb = state_timeout_cb,
@@ -936,9 +1021,17 @@ main(int argc, char ** argv)
 	uloop_init();
 	ubus_auto_connect(&conn);
 
-	if (poe_stream_open("/dev/ttyS1", &stream, B19200) < 0)
-		return -1;
-
+	if (config.i2c_bus >= 0) {
+		i2c_file = i2c_addr_open(config.i2c_bus, i2c_dev_filename, sizeof(i2c_dev_filename));
+		if (i2c_file < 0)
+			return -1;
+		ULOG_INFO("Using I2C bus #%d: %s\n", config.i2c_bus, i2c_dev_filename);
+		ULOG_INFO("Setting I2C slave address to %x\n", config.i2c_addr);
+		i2c_set_slave_addr(i2c_file, config.i2c_addr);
+	} else {
+		if (poe_stream_open("/dev/ttyS1", &stream, B19200) < 0)
+			return -1;
+	}
 
 	poe_initial_setup();
 	uloop_timeout_set(&state_timeout, 1000);
