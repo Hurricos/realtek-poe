@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 
+#include <signal.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -1000,6 +1001,18 @@ ubus_connect_handler(struct ubus_context *ctx)
 		ULOG_ERR("Failed to add object: %s\n", ubus_strerror(ret));
 }
 
+static void whaaaaaaaaaaaaaaat_do_you_want(int why)
+{
+	static int num_sigs = 0;
+
+	ulog_threshold(LOG_DEBUG);
+
+	if (++num_sigs == 2) {
+		ULOG_WARN("Okay, okay, GTFOing\n");
+		exit(1);
+	}
+}
+
 int
 main(int argc, char ** argv)
 {
@@ -1023,6 +1036,8 @@ main(int argc, char ** argv)
 			break;
 		}
 	}
+
+	signal(SIGINT, whaaaaaaaaaaaaaaat_do_you_want);
 
 	config_load(1);
 	config_apply_quirks(&config);
