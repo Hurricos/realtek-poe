@@ -594,6 +594,7 @@ static void handle_poe_f0_reply(struct cmd *cmd, uint8_t *reply)
 		[0xf] = "not-ready",
 	};
 
+	ulog_threshold(LOG_DEBUG);
 	reason = GET_STR((uint8_t)(reply[0] - 0xf0), reasons);
 	reason = reason ? reason : "unknown";
 
