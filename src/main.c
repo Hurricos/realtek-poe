@@ -880,10 +880,40 @@ ubus_poe_reload_cb(struct ubus_context *ctx, struct ubus_object *obj,
 	return UBUS_STATUS_OK;
 }
 
+static const struct blobmsg_policy ubus_poe_manage_policy[] = {
+	{ "port", BLOBMSG_TYPE_STRING },
+	{ "enable", BLOBMSG_TYPE_BOOL },
+};
+
+static int ubus_poe_manage_cb(struct ubus_context *ctx, struct ubus_object *obj,
+			      struct ubus_request_data *req, const char *method,
+			      struct blob_attr *msg)
+{
+	struct blob_attr *tb[ARRAY_SIZE(ubus_poe_manage_policy)];
+	const struct port_config *port;
+	const char *port_name;
+	size_t i;
+
+	blobmsg_parse(ubus_poe_manage_policy,
+		      ARRAY_SIZE(ubus_poe_manage_policy),
+		      tb, blob_data(msg), blob_len(msg));
+	if (!tb[0] || !tb[1])
+		return UBUS_STATUS_INVALID_ARGUMENT;
+
+	port_name = blobmsg_get_string(tb[0]);
+	for (i = 0; i < config.port_count; i++) {
+		port = &config.ports[i];
+		if (port->enable && !strcmp(port_name, port->name))
+			return poe_cmd_port_enable(i, blobmsg_get_bool(tb[1]));
+	}
+	return UBUS_STATUS_INVALID_ARGUMENT;
+}
+
 static const struct ubus_method ubus_poe_methods[] = {
 	UBUS_METHOD_NOARG("info", ubus_poe_info_cb),
 	UBUS_METHOD_NOARG("reload", ubus_poe_reload_cb),
 	UBUS_METHOD("sendframe", ubus_poe_sendframe_cb, ubus_poe_sendframe_policy),
+	UBUS_METHOD("manage", ubus_poe_manage_cb, ubus_poe_manage_policy),
 };
 
 static struct ubus_object_type ubus_poe_object_type =
