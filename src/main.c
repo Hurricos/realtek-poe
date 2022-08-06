@@ -994,7 +994,7 @@ main(int argc, char ** argv)
 	uloop_init();
 	ubus_auto_connect(&conn);
 
-	if (poe_stream_open("/dev/ttyS1", &stream, B19200) < 0)
+	if (poe_stream_open("/dev/ttyS1", &stream, B115200) < 0)
 		return -1;
 
 
