@@ -85,6 +85,44 @@ static struct config config = {
 	.pse_id_set_budget_mask = 0x01,
 };
 
+static uint8_t bcm_to_rtl_map[0x100] = {
+	[0x18] = 0x04,
+	[0x16] = 0x13,
+	[0x20] = 0x40,
+	[0x26] = 0x29,
+	[0x2a] = 0x50,
+	[0x30] = 0x44,
+};
+
+/*
+ * Assuming rtl dialect does not reuse command IDs from the bcm dialect, then
+ * we can use a single map to get to and from BCM to RTL, and back
+ */
+static void close_map(uint8_t map[0x100])
+{
+	uint8_t cmd;
+	size_t i;
+
+	for (i = 0; i < 0x100; i++) {
+		cmd = map[i];
+		if (cmd != 0)
+			map[cmd] = i;
+	}
+}
+
+static uint8_t bcm_to_rtl_cmd_id(uint8_t rtl_cmd)
+{
+	uint8_t bcm_cmd = bcm_to_rtl_map[rtl_cmd];
+
+	return bcm_cmd ? bcm_cmd : rtl_cmd;
+}
+
+static uint8_t rtl_to_bcm_cmd_id(uint8_t cmd)
+{
+	/* It's a closed map, remember? */
+	return bcm_to_rtl_cmd_id(cmd);
+}
+
 static uint16_t read16_be(uint8_t *raw)
 {
 	return (uint16_t)raw[0] << 8 | raw[1];
@@ -254,6 +292,7 @@ poe_cmd_queue(unsigned char *_cmd, int len)
 	memcpy(cmd->cmd, _cmd, len);
 
 	cmd_seq++;
+	cmd->cmd[0] = bcm_to_rtl_cmd_id(cmd->cmd[0]);
 	cmd->cmd[1] = cmd_seq;
 	cmd->cmd[11] = 0;
 
@@ -630,6 +669,9 @@ poe_reply_consume(unsigned char *reply)
 
 	free(cmd);
 
+	cmd_id = rtl_to_bcm_cmd_id(cmd_id);
+	reply[0] = rtl_to_bcm_cmd_id(reply[0]);
+
 	if ((reply[0] != cmd_id) || (reply[0] > ARRAY_SIZE(reply_handler))) {
 		ULOG_DBG("received reply with bad command id\n");
 		return -1;
@@ -988,6 +1030,7 @@ main(int argc, char ** argv)
 		}
 	}
 
+	close_map(bcm_to_rtl_map);
 	config_load(1);
 	config_apply_quirks(&config);
 
