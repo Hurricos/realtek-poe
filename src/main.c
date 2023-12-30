@@ -23,6 +23,23 @@
 
 typedef int (*poe_reply_handler)(unsigned char *reply);
 
+enum power_up_mode_t {
+	POWER_UP_MODE_802_3AF = 0,
+	POWER_UP_MODE_802_3AT = 3,
+};
+
+static int poe_type_to_power_up_mode(const char *poe_type)
+{
+	if (!strcasecmp(poe_type, "802.3af"))
+		return POWER_UP_MODE_802_3AF;
+
+	if (!strcasecmp(poe_type, "802.3at"))
+		return POWER_UP_MODE_802_3AT;
+
+	ULOG_WARN("Unknown poe_type '%s'\n", poe_type);
+	return -EINVAL;
+}
+
 /* Careful with this; Only works for set_detection/disconnect_type commands. */
 #define PORT_ID_ALL	0x7f
 #define MAX_PORT	24
@@ -98,13 +115,16 @@ static void write16_be(uint8_t *raw, uint16_t value)
 
 static void load_port_config(struct uci_context *uci, struct uci_section *s)
 {
-	const char * name, *id_str, *enable, *priority, *poe_plus;
+	const char * name, *id_str, *enable, *priority, *poe_plus, *poe_type;
+	int power_up_mode;
 	unsigned long id;
 
 	id_str = uci_lookup_option_string(uci, s, "id");
 	name = uci_lookup_option_string(uci, s, "name");
 	enable = uci_lookup_option_string(uci, s, "enable");
 	priority = uci_lookup_option_string(uci, s, "priority");
+	poe_type = uci_lookup_option_string(uci, s, "poe_type");
+	/* poe_plus='1' is deprecated as it is redundant with poe_type='ieee8023at' */
 	poe_plus = uci_lookup_option_string(uci, s, "poe_plus");
 
 	if (!id_str || !name) {
@@ -127,8 +147,15 @@ static void load_port_config(struct uci_context *uci, struct uci_section *s)
 	if (config.ports[id].priority > 3)
 		config.ports[id].priority = 3;
 
-	if (poe_plus && !strcmp(poe_plus, "1"))
-		config.ports[id].power_up_mode = 3;
+	config.ports[id].power_up_mode = POWER_UP_MODE_802_3AF;
+	if (poe_type) {
+		power_up_mode = poe_type_to_power_up_mode(poe_type);
+		if (power_up_mode >= 0)
+			config.ports[id].power_up_mode = power_up_mode;
+	} else if (poe_plus && !strcmp(poe_plus, "1")) {
+		ULOG_WARN("Deprecated option 'poe_plus', please replace with poe_type='802.3at'");
+		config.ports[id].power_up_mode = POWER_UP_MODE_802_3AT;
+	}
 }
 
 static void load_global_config(struct uci_context *uci, struct uci_section *s)

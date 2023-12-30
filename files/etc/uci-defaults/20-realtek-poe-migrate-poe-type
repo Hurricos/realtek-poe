@@ -1,0 +1,27 @@
+[ ! -s /etc/config/poe ] && exit 0
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+function migrate_port_poe_type() {
+    local cfg="$1"
+    local poe_plus poe_type
+
+    config_get poe_plus "$cfg" poe_plus ""
+    config_get poe_type "$cfg" poe_type ""
+
+    # Only translate if not already configured
+    if [ -z "$poe_type" ] && [ "$poe_plus" = "1" ]; then
+        uci set "poe.$cfg.poe_type=802.3at"
+    fi
+
+    # Remove deprecated config
+    if [ -n "$poe_plus" ]; then
+        uci delete "poe.$cfg.poe_plus"
+    fi
+}
+
+config_load poe
+config_foreach migrate_port_poe_type
+
+uci commit poe
