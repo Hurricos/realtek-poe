@@ -91,7 +91,7 @@ struct poe_dialect {
 	int (*enable_port_async)(struct mcu *mcu, uint8_t port, uint8_t enable);
 	int (*poll_async)(struct mcu *mcu, const struct config *cfg);
 	int (*reset)(struct mcu *mcu);
-	int (*handle_reply)(struct mcu *mcu, uint8_t *reply, size_t len);
+	int (*handle_reply)(struct mcu_state *ctx, uint8_t *reply, size_t len);
 };
 
 int mcu_queue_cmd(struct mcu *mcu, uint8_t *cmd_buf, size_t len);
@@ -106,5 +106,7 @@ static inline void write16_be(uint8_t *raw, uint16_t value)
 	raw[0] = value >> 8;
 	raw[1] =  value & 0xff;
 }
+
+extern const struct poe_dialect broadcom_dialect;
 
 #endif /* TEK_POE_H */
