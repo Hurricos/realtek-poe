@@ -540,6 +540,9 @@ static int poe_reply_port_ext_config(struct mcu_state *state, uint8_t *reply)
 	port->primary_pse_output = reply[7];
 	/* In the broadcom dialect, pse output and mapping are synonymous. */
 	port->mapping = port->primary_pse_output;
+	/* In the realtek dialect, mapping comes from a different byte. */
+	if (reply[8] != 0xff)
+		port->mapping = reply[8];
 
 	return 0;
 }
@@ -554,10 +557,8 @@ static int poe_cmd_4_port_status(struct mcu *mcu, uint8_t p1, uint8_t p2,
 	return mcu_queue_cmd(mcu, cmd, sizeof(cmd));
 }
 
-static int poe_reply_4_port_status(struct mcu_state *state, uint8_t *reply)
+const char *port_short_status_to_str(uint8_t short_status)
 {
-	int i, port, pstate;
-
 	const char *status[] = {
 		[0] = "Disabled",
 		[1] = "Searching",
@@ -566,6 +567,13 @@ static int poe_reply_4_port_status(struct mcu_state *state, uint8_t *reply)
 		[5] = "Other fault",
 		[6] = "Requesting power",
 	};
+
+	return GET_STR(short_status & 0xf, status);
+}
+
+static int poe_reply_4_port_status(struct mcu_state *state, uint8_t *reply)
+{
+	int i, port, pstate;
 
 	for (i = 2; i < OFFSET_CHECKSUM; i+=2) {
 		port = reply[i];
@@ -578,7 +586,7 @@ static int poe_reply_4_port_status(struct mcu_state *state, uint8_t *reply)
 			return -1;
 		}
 
-		state->ports[port].status = GET_STR(pstate & 0xf, status);
+		state->ports[port].status = port_short_status_to_str(pstate);
 	}
 
 	return 0;
@@ -924,8 +932,12 @@ static void state_timeout_cb(struct uloop_timeout *t)
 	if (poe->hardcore_hacking_mode_en)
 		poe_cmd_get_extended_config(mcu);
 
-	for (i = 0; i < cfg->port_count; i += 4)
-		poe_cmd_4_port_status(mcu, i, i + 1, i + 2, i + 3);
+	if (mcu->dialect.desc->ops->poll_async) {
+		mcu->dialect.desc->ops->poll_async(mcu, cfg);
+	} else {
+		for (i = 0; i < cfg->port_count; i += 4)
+			poe_cmd_4_port_status(mcu, i, i + 1, i + 2, i + 3);
+	}
 
 	for (i = 0; i < cfg->port_count; i++) {
 		if (poe->hardcore_hacking_mode_en) {
