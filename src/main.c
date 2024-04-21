@@ -45,7 +45,7 @@ struct poe_ctx {
 	unsigned int hardcore_hacking_mode_en : 1;
 };
 
-static const struct poe_dialect *dialect = &broadcom_dialect;
+static const struct poe_dialect *dialect = &realtek_dialect;
 
 static struct poe_ctx *ubus_to_poe_ctx(struct ubus_context *u)
 {

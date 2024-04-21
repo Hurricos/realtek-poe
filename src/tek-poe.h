@@ -108,5 +108,6 @@ static inline void write16_be(uint8_t *raw, uint16_t value)
 }
 
 extern const struct poe_dialect broadcom_dialect;
+extern const struct poe_dialect realtek_dialect;
 
 #endif /* TEK_POE_H */
