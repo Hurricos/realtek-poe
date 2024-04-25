@@ -132,6 +132,8 @@ static int rtl_reply_status(struct mcu_state *ctx, uint8_t *reply)
 		ULOG_ERR("num_detected_ports=%d is invalid\n", reply[3]);
 	else
 		ctx->num_detected_ports = reply[3];
+	ctx->port_map_en = reply[4];
+	ctx->device_id =  read16_be(reply + 5);
 	ctx->sys_version = reply[7];
 	ctx->sys_mcu = GET_STR(reply[8], mcu);
 	ctx->sys_status = GET_STR(reply[9], status);
@@ -150,6 +152,32 @@ static int rtl_cmd_power_stats(void)
 static int rtl_reply_power_stats(struct mcu_state *ctx, uint8_t *reply)
 {
 	ctx->power_consumption = read16_be(reply + 2) * 0.1;
+	ctx->reported_power_budget = read16_be(reply + 4) * 0.1;
+
+	return 0;
+}
+
+static int rtl_cmd_port_status(uint8_t port)
+{
+	uint8_t cmd[] = { 0x42, 0x00, port };
+
+	return poe_cmd_queue(cmd, sizeof(cmd));
+}
+
+static int rtl_reply_port_status(struct mcu_state *mcu, uint8_t *reply)
+{
+	int port;
+
+	port = reply[2];
+	if (port >= MAX_PORT) {
+		ULOG_WARN("Invalid port status packet (port=%d)\n", port);
+		return -1;
+	}
+
+	mcu->ports[port].class_info = reply[5];
+	mcu->ports[port].pd_type = reply[6];
+	mcu->ports[port].mpss_mask = reply[7];
+	mcu->ports[port].has_detailed_state = 1;
 
 	return 0;
 }
@@ -220,6 +248,35 @@ static int rtl_cmd_why_u_reset(void)
 	return poe_cmd_queue(cmd, sizeof(cmd));
 }
 
+static int rtl_cmd_port_config(uint8_t port)
+{
+	uint8_t cmd[] = { 0x48, 0x00, port };
+
+	return poe_cmd_queue(cmd, sizeof(cmd));
+}
+
+static int rtl_reply_port_config(struct mcu_state *mcu, uint8_t *reply)
+{
+	unsigned int port_idx = reply[2];
+	struct port_state *port;
+
+	if (port_idx > mcu->num_detected_ports) {
+		ULOG_WARN("Invalid port in ext config packet (port=%d)\n", port_idx);
+		return -EPROTO;
+	}
+
+	port = &mcu->ports[port_idx];
+
+	port->enabled = reply[3];
+	port->auto_powerup = reply[4];
+	port->detection_type = reply[5];
+	port->classification_enable = reply[6];
+	port->disconnect_type = reply[7];
+	port->pair = reply[8];
+
+	return 0;
+}
+
 static int rtl_cmd_port_ext_config(uint8_t port)
 {
 	uint8_t cmd[] = { 0x49, 0x00, port };
@@ -247,7 +304,36 @@ static int rtl_reply_port_ext_config(struct mcu_state *mcu, uint8_t *reply)
 	port = &mcu->ports[port_idx];
 
 	port->poe_mode = GET_STR(reply[3], mode);
-	/* port->mapping = reply[8] */
+	port->mapping = reply[8];
+
+
+	port->power_limit_type = reply[4];
+	port->power_budget = reply[5] * 0.2;
+	port->priority = reply[6];
+	port->primary_pse_output = reply[7];
+	port->mapping = reply[8];
+	port->has_ext_config = 1;
+
+	return 0;
+}
+
+static int rtl_cmd_ext_config()
+{
+	uint8_t cmd[] = { 0x4a };
+
+	return poe_cmd_queue(cmd, sizeof(cmd));
+}
+
+static int rtl_reply_ext_config(struct mcu_state *mcu, uint8_t *reply)
+{
+	mcu->uvlo_threshold = reply[2] * 0.06445 + 33.0;
+	mcu->pre_alloc = reply[3];
+	mcu->powerup_mode = reply[4];
+	mcu->disconnect_type = reply[5];
+	mcu->ddflag = reply[6];
+	mcu->ovlo_threshold = reply[7]* 0.06445 + 57.0;
+	mcu->num_pse = reply[8];
+	mcu->has_ext_cfg_info = 1;
 
 	return 0;
 }
@@ -282,9 +368,12 @@ static poe_reply_handler reply_handler[] = {
 	[0x15] = rtl_reply_4_port,
 	[0x40] = rtl_reply_status,
 	[0x41] = rtl_reply_power_stats,
+	[0x42] = rtl_reply_port_status,
 	[0x43] = rtl_reply_4_port_group_status,
 	[0x44] = rtl_reply_port_power_stats,
+	[0x48] = rtl_reply_port_config,
 	[0x49] = rtl_reply_port_ext_config,
+	[0x4a] = rtl_reply_ext_config,
 };
 
 static int poe_default_reply_handler(uint8_t *reply)
@@ -417,12 +506,16 @@ static int rtl_poll(struct mcu *mcu, const struct config *config)
 {
 	size_t i;
 
+	rtl_cmd_status();
+	rtl_cmd_ext_config();
 	rtl_cmd_power_stats();
 
 	for (i = 0; i < config->port_count; i += 4)
 		rtl_cmd_4_port_group_status(i);
 
 	for (i = 0; i < config->port_count; i++) {
+		rtl_cmd_port_config(i);
+		rtl_cmd_port_status(i);
 		rtl_cmd_port_ext_config(i);
 		rtl_cmd_port_power_stats(i);
 	}
