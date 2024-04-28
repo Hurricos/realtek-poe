@@ -203,7 +203,7 @@ static int mcu_cmd_next(struct mcu *mcu)
 	return mcu_cmd_send(mcu, cmd);
 }
 
-static int mcu_queue_cmd(struct mcu *mcu, uint8_t *cmd_buf, size_t len)
+int mcu_queue_cmd(struct mcu *mcu, uint8_t *cmd_buf, size_t len)
 {
 	int i, empty = list_empty(&mcu->pending_cmds);
 	struct cmd *cmd = malloc(sizeof(*cmd));

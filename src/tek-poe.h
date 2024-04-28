@@ -13,6 +13,8 @@
 #define MAX(a, b)	(((a) > (b)) ? (a) : (b))
 #define MAX_PORT	48
 
+struct mcu;
+
 struct port_state {
 	const char *status;
 	const char *poe_mode;
@@ -82,6 +84,17 @@ struct config {
 	uint8_t pse_id_set_budget_mask;
 	struct port_config ports[MAX_PORT];
 };
+
+struct poe_dialect {
+	int (*init_async)(struct mcu *mcu, const struct config *cfg);
+	int (*init_ports_async)(struct mcu *mcu, const struct config *cfg);
+	int (*enable_port_async)(struct mcu *mcu, uint8_t port, uint8_t enable);
+	int (*poll_async)(struct mcu *mcu, const struct config *cfg);
+	int (*reset)(struct mcu *mcu);
+	int (*handle_reply)(struct mcu *mcu, uint8_t *reply, size_t len);
+};
+
+int mcu_queue_cmd(struct mcu *mcu, uint8_t *cmd_buf, size_t len);
 
 static inline uint16_t read16_be(uint8_t *raw)
 {
