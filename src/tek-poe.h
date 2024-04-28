@@ -3,6 +3,7 @@
 #ifndef TEK_POE_H
 #define TEK_POE_H
 
+#include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <libubox/utils.h>
@@ -12,6 +13,47 @@
 #define GET_STR(a, b)	((a) < ARRAY_SIZE(b) ? (b)[a] : NULL)
 #define MAX(a, b)	(((a) > (b)) ? (a) : (b))
 #define MAX_PORT	48
+
+/*
+ * Order of commands doesn't matter. These are just an internal representation
+ * that gets mapped to a wire command based on the dialect. Value of "0" is
+ * reserve for "dialect does not implement command".
+ *   MCU_ are global commands
+ *   PORT_ are "port" commands
+ */
+enum poe_cmd {
+	CMD_NONE = 0,
+	MCU_SET_POWER_MGMT_MODE,
+	MCU_SET_POWER_BUDGET,
+	MCU_ENABLE_PORT_MAPPING,
+	PORT_ENABLE,
+	PORT_ENABLE_CLASSIFICATION,
+	PORT_SET_DETECTION_TYPE,
+	PORT_SET_PRIORITY,
+	PORT_SET_POE_MODE,
+	PORT_SET_DISCONNECT_TYPE,
+	PORT_SET_POWER_LIMIT_TYPE,
+	PORT_SET_POWER_LIMIT,
+	PORT_SET_AUTO_POWERUP,
+
+	MCU_GET_SYSTEM_INFO,
+	MCU_GET_POWER_STATS,
+	MCU_GET_EXT_CONFIG,
+	PORT_GET_CONFIG,
+	PORT_GET_EXT_CONFIG,
+	PORT_GET_STATUS,
+	PORT_GET_SHORT_STATUS,
+	PORT_GET_POWER_STATS,
+	CMD_MAX
+};
+
+enum poe_cmd_flags {
+	CMD_IS_4PORT = 2,
+	CMD_IS_4PORT_RTL = 4,
+	CMD_HAS_ALL_PORT = 8,
+};
+
+struct mcu;
 
 struct port_state {
 	const char *status;
@@ -83,6 +125,27 @@ struct config {
 	struct port_config ports[MAX_PORT];
 };
 
+struct dialect_map_entry {
+	uint8_t wire_id;
+	uint8_t flags;
+};
+
+struct dialect_map {
+	const struct dialect_map_entry *entries;
+	uint8_t reverve_map[0x100];
+	size_t len;
+};
+
+struct poe_dialect {
+	struct dialect_map *map;
+	int (*init_async)(struct mcu *mcu, const struct config *cfg);
+	int (*poll_async)(struct mcu *mcu, const struct config *cfg);
+	int (*reset)(struct mcu *mcu);
+	int (*handle_reply)(struct mcu_state *mcu, uint8_t *reply, size_t len);
+};
+
+int mcu_queue_buf(struct mcu *mcu, uint8_t *cmd_buf, size_t len);
+
 static inline uint16_t read16_be(uint8_t *raw)
 {
 	return (uint16_t)raw[0] << 8 | raw[1];
@@ -92,6 +155,40 @@ static inline void write16_be(uint8_t *raw, uint16_t value)
 {
 	raw[0] = value >> 8;
 	raw[1] =  value & 0xff;
+}
+
+static inline int dalect_reverse_map(struct dialect_map *map)
+{
+	unsigned int wire_id;
+	size_t i;
+
+	for (i = 0; i < map->len; i++) {
+		if (!map->entries[i].flags)
+			continue;
+
+		wire_id = map->entries[i].wire_id;
+		if (wire_id > 0x100)
+			return -EINVAL;
+
+		map->reverve_map[wire_id] = i;
+	}
+	return 0;
+}
+
+static inline int dialect_lookup_cmd(const struct dialect_map *map,
+				     enum poe_cmd cmd)
+{
+	if (cmd > map->len || !map->entries[cmd].flags)
+		return -EINVAL;
+
+	return map->entries[cmd].wire_id;
+}
+
+
+static inline enum poe_cmd dialect_rev_lookup(const struct dialect_map *map,
+					      uint8_t wire_id)
+{
+	return map->reverve_map[wire_id];
 }
 
 #endif /* TEK_POE_H */
