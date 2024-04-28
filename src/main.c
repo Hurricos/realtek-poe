@@ -23,6 +23,7 @@
 #define MAX_RETRIES	5
 
 struct mcu {
+	struct uloop_timeout response_timeout;
 	struct uloop_timeout error_timeout;
 	struct list_head pending_cmds;
 	struct ustream_fd stream;
@@ -180,12 +181,30 @@ static void log_packet(int log_level, const char *prefix, const uint8_t d[12])
 		     d[6], d[7], d[8], d[9], d[10], d[11]);
 }
 
+static void mcu_no_response(struct uloop_timeout *t)
+{
+	struct mcu *mcu = container_of(t, struct mcu, response_timeout);
+	struct cmd *cmd;
+
+	while (!list_empty(&mcu->pending_cmds)) {
+		cmd = list_first_entry(&mcu->pending_cmds, struct cmd, list);
+		list_del(&cmd->list);
+	}
+
+	ULOG_ERR("No bueno, no responsp\n");
+
+	if (dialect->reset)
+		dialect->reset(mcu);
+}
+
 static int mcu_cmd_send(struct mcu *mcu, struct cmd *cmd)
 {
 	if (mcu->error_timeout.pending)
 		return -EBUSY;
 
 	log_packet(LOG_DEBUG, "TX ->", cmd->cmd);
+	mcu->response_timeout.cb = mcu_no_response;
+	uloop_timeout_set(&mcu->response_timeout, 2000);
 	return ustream_write(&mcu->stream.stream, (void *)cmd->cmd, 12, false);
 }
 
@@ -274,6 +293,7 @@ static int mcu_handle_reply(struct mcu *mcu, uint8_t *reply)
 	uint8_t sum = 0, i, cmd_id, cmd_seq;
 
 	log_packet(LOG_DEBUG, "RX <-", reply);
+	uloop_timeout_cancel(&mcu->response_timeout);
 
 	if (list_empty(&mcu->pending_cmds)) {
 		ULOG_ERR("received unsolicited reply\n");
@@ -658,7 +678,7 @@ int main(int argc, char **argv)
 	uloop_init();
 	ubus_auto_connect(&poe.conn);
 
-	if (poe_stream_open("/dev/ttyS1", &poe.mcu.stream, B19200) < 0)
+	if (poe_stream_open("/dev/ttyS1", &poe.mcu.stream, B115200) < 0)
 		return -1;
 
 	dialect->init_async(&poe.mcu, &poe.config);

@@ -27,6 +27,13 @@ static int poet_cmd_4_port(uint8_t cmd_id, uint8_t port[4], uint8_t data[4])
 		return poe_cmd_queue(cmd, sizeof(cmd));
 }
 
+static int rtl_cmd_pse_up(uint8_t enable)
+{
+	uint8_t cmd[] = { 0x00, 0x00, enable };
+
+	return poe_cmd_queue(cmd, sizeof(cmd));
+}
+
 static int rtl_cmd_port_enable(struct mcu *mcu, uint8_t port, uint8_t enable)
 {
 	uint8_t cmd[] = { 0x01, 0x00, port, enable };
@@ -385,6 +392,7 @@ static int rtl_initial_setup(struct mcu *mcu, const struct config *config)
 {
 	hack_mcu = mcu;
 
+	rtl_cmd_pse_up(true);
 	rtl_cmd_why_u_reset();
 	rtl_cmd_reset_enable(false);
 
@@ -395,6 +403,13 @@ static int rtl_initial_setup(struct mcu *mcu, const struct config *config)
 
 	rtl_port_setup(mcu, config);
 
+	return 0;
+}
+
+static int chicken_reset(struct mcu *mcu)
+{
+	// rtl_cmd_reset_enable(false);
+	rtl_cmd_reset_enable(true);
 	return 0;
 }
 
@@ -421,4 +436,5 @@ const struct poe_dialect realtek_dialect = {
 	.poll_async = rtl_poll,
 	.enable_port_async = rtl_cmd_port_enable,
 	.handle_reply = rtl_handle_reply,
+	.reset = chicken_reset,
 };
