@@ -30,6 +30,7 @@ typedef int (*poe_reply_handler)(struct mcu_state *mcu, uint8_t *reply);
 #define OFFSET_CHECKSUM	(CMD_SIZE - 1)
 
 struct mcu {
+	struct uloop_timeout response_timeout;
 	const struct poe_dialect *dialect;
 	struct uloop_timeout error_timeout;
 	struct list_head pending_cmds;
@@ -203,6 +204,22 @@ static void config_load(struct config *cfg, int init)
 	uci_free_context(uci);
 }
 
+static void mcu_no_response(struct uloop_timeout *t)
+{
+	struct mcu *mcu = container_of(t, struct mcu, response_timeout);
+	struct cmd *cmd;
+
+	while (!list_empty(&mcu->pending_cmds)) {
+		cmd = list_first_entry(&mcu->pending_cmds, struct cmd, list);
+		list_del(&cmd->list);
+	}
+
+	ULOG_ERR("No response from PoE controller. Trying a reset\n");
+
+	if (mcu->dialect->reset)
+		mcu->dialect->reset(mcu);
+}
+
 static void log_packet(int log_level, const char *prefix, const uint8_t d[12])
 {
 	ulog(log_level,
@@ -217,6 +234,8 @@ static int mcu_cmd_send(struct mcu *mcu, struct cmd *cmd)
 		return -EBUSY;
 
 	log_packet(LOG_DEBUG, "TX ->", cmd->cmd);
+	mcu->response_timeout.cb = mcu_no_response;
+	uloop_timeout_set(&mcu->response_timeout, 2000);
 	return ustream_write(&mcu->stream.stream, (void *)cmd->cmd, 12, false);
 }
 
@@ -745,6 +764,7 @@ static int mcu_handle_reply(struct mcu *mcu, uint8_t *reply)
 	uint8_t sum = 0, i, cmd_id, cmd_seq;
 	enum poe_cmd command;
 
+	uloop_timeout_cancel(&mcu->response_timeout);
 	log_packet(LOG_DEBUG, "RX <-", reply);
 
 	if (list_empty(&mcu->pending_cmds)) {

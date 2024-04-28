@@ -35,6 +35,13 @@ static const struct dialect_map_entry rtl_dialect_map[] = {
 
 };
 
+static int rtl_cmd_pse_up(struct mcu *mcu, uint8_t enable)
+{
+	uint8_t cmd[] = { 0x00, 0x00, enable };
+
+	return mcu_queue_buf(mcu, cmd, sizeof(cmd));
+}
+
 static int rtl_cmd_reset_enable(struct mcu *mcu, bool enable)
 {
 	uint8_t cmd[] = { 0x02, 0x00, enable };
@@ -116,9 +123,17 @@ static int rtl_handle_reply(struct mcu_state *ctx, uint8_t *reply, size_t len)
 
 static int rtl_initial_setup(struct mcu *mcu, const struct config *config)
 {
+	rtl_cmd_pse_up(mcu, true);
 	rtl_cmd_why_u_reset(mcu);
 	rtl_cmd_reset_enable(mcu, false);
 
+	return 0;
+}
+
+static int chicken_reset(struct mcu *mcu)
+{
+	// rtl_cmd_reset_enable(false);
+	rtl_cmd_reset_enable(mcu, true);
 	return 0;
 }
 
@@ -142,4 +157,5 @@ const struct poe_dialect realtek_dialect = {
 	.init_async = rtl_initial_setup,
 	.poll_async = rtl_poll,
 	.handle_reply = rtl_handle_reply,
+	.reset = chicken_reset,
 };
