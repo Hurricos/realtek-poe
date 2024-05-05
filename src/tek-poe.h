@@ -202,4 +202,6 @@ static inline enum poe_cmd dialect_rev_lookup(const struct poe_dialect *dialect,
 	return dialect->reverve_map[wire_id];
 }
 
+extern const struct dialect_desc broadcom_dialect;
+
 #endif /* TEK_POE_H */
