@@ -3,6 +3,7 @@
 #ifndef TEK_POE_H
 #define TEK_POE_H
 
+#include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <libubox/utils.h>
@@ -12,6 +13,85 @@
 #define GET_STR(a, b)	((a) < ARRAY_SIZE(b) ? (b)[a] : NULL)
 #define MAX(a, b)	(((a) > (b)) ? (a) : (b))
 #define MAX_PORT	48
+
+/*
+ * Order of commands doesn't matter. These are just an internal representation
+ * that gets mapped to a wire command based on the dialect. Value of "0" is
+ * reserve for "dialect does not implement command".
+ *   MCU_ are global commands
+ *   PORT_ are "port" commands
+ */
+enum poe_cmd {
+	CMD_NONE = 0,
+	MCU_SET_POWER_MGMT_MODE,
+	MCU_SET_POWER_BUDGET,
+	MCU_ENABLE_PORT_MAPPING,
+	PORT_ENABLE,
+	PORT_ENABLE_CLASSIFICATION,
+	PORT_SET_DETECTION_TYPE,
+	PORT_SET_PRIORITY,
+	PORT_SET_POE_MODE,
+	PORT_SET_DISCONNECT_TYPE,
+	PORT_SET_POWER_LIMIT_TYPE,
+	PORT_SET_POWER_LIMIT,
+	PORT_SET_AUTO_POWERUP,
+
+	MCU_GET_SYSTEM_INFO,
+	MCU_GET_POWER_STATS,
+	MCU_GET_EXT_CONFIG,
+	PORT_GET_CONFIG,
+	PORT_GET_EXT_CONFIG,
+	PORT_GET_STATUS,
+	PORT_GET_SHORT_STATUS,
+	PORT_GET_POWER_STATS,
+	CMD_MAX
+};
+
+enum poe_cmd_flags {
+	CMD_IS_4PORT,
+	CMD_IS_RETARDED_4PORT,
+	CMD_HAS_ALL_PORT,
+};
+
+struct dialect_map {
+	uint8_t wire_id;
+	uint8_t flags;
+};
+
+static inline int rev_map(struct dialect_map map[0x100])
+{
+	unsigned int wire_id, rev_map_entry;
+	int i;
+
+	for (i = 0; i < CMD_MAX; i++) {
+		wire_id = map[i].wire_id;
+		rev_map_entry = wire_id + 0x80;
+
+		if (rev_map_entry > 0x100)
+			return -EINVAL;
+
+		map[rev_map_entry].wire_id = i;
+	}
+	return 0;
+}
+
+static inline int lookup(const struct dialect_map map[0x100], enum poe_cmd cmd)
+{
+	if (cmd > CMD_MAX)
+		return -EINVAL;
+
+	return map[cmd].wire_id;
+}
+
+static inline int rev_lookup(const struct dialect_map map[0x100], uint8_t wire_id)
+{
+	unsigned int rev_map_entry = wire_id + 0x80;
+
+	if (rev_map_entry > 0x100)
+		return -EINVAL;
+
+	return map[rev_map_entry].wire_id;
+}
 
 struct mcu;
 
