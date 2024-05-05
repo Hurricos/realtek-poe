@@ -5,7 +5,7 @@ ADD_DEFINITIONS(-Os -ggdb -Wextra -Wall -Werror --std=gnu99 -Wmissing-declaratio
 
 SET(CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "")
 
-SET(SOURCES main.c)
+SET(SOURCES main.c dialect_bcm.c)
 
 IF(DEBUG)
   ADD_DEFINITIONS(-DDEBUG -g3)
