@@ -12,6 +12,27 @@ typedef int (*poe_reply_handler)(struct mcu_state *ctx, uint8_t *reply);
 #define PORT_ID_ALL	0x7f
 #define PORT_ID_WRONG_DIALECT		0x61
 
+__attribute__((unused))
+static const struct dialect_map bcm_dialect_map[0x100] = {
+	[MCU_SET_POWER_MGMT_MODE] 	= {0x17, 0},
+	[MCU_SET_POWER_BUDGET]		= {0x18, 0},
+	[MCU_ENABLE_PORT_MAPPING]	= {0x02, 0},
+	[PORT_ENABLE]			= {0x00, 0},
+	[PORT_ENABLE_CLASSIFICATION]	= {0x11, CMD_IS_4PORT},
+	[PORT_SET_DETECTION_TYPE]	= {0x10, CMD_HAS_ALL_PORT},
+	[PORT_SET_PRIORITY]		= {0x1a, CMD_IS_4PORT},
+	[PORT_SET_POE_MODE]		= {0xfc, CMD_IS_4PORT},
+	[PORT_SET_DISCONNECT_TYPE]	= {0x13, CMD_HAS_ALL_PORT},
+	[PORT_SET_POWER_LIMIT_TYPE]	= {0x15, CMD_IS_4PORT},
+	[PORT_SET_POWER_LIMIT]		= {0x16, 0},
+
+	[MCU_GET_SYSTEM_INFO]		= {0x20, 0},
+	[MCU_GET_POWER_STATS]		= {0x23, 0},
+	[PORT_GET_EXT_CONFIG]		= {0x26, 0},
+	[PORT_GET_SHORT_STATUS]		= {0x28, CMD_IS_4PORT},
+	[PORT_GET_POWER_STATS]		= {0x30, 0},
+};
+
 static int poet_cmd_4_port(struct mcu *mcu, uint8_t cmd_id, uint8_t port[4],
 			   uint8_t data[4])
 {
