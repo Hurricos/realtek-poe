@@ -648,6 +648,8 @@ static void ubus_connect_handler(struct ubus_context *ctx)
 
 int main(int argc, char **argv)
 {
+	unsigned int baudrate = 115200;
+	speed_t dino_baud;
 	int ch;
 
 	struct poe_ctx poe = {
@@ -664,12 +666,14 @@ int main(int argc, char **argv)
 	ulog_open(ULOG_STDIO | ULOG_SYSLOG, LOG_DAEMON, "realtek-poe");
 	ulog_threshold(LOG_INFO);
 
-	while ((ch = getopt(argc, argv, "d")) != -1) {
+	while ((ch = getopt(argc, argv, "ds")) != -1) {
 		switch (ch) {
 		case 'd':
 			ulog_threshold(LOG_DEBUG);
 			poe.hardcore_hacking_mode_en = 1;
 			break;
+		case 's':
+			baudrate = 19200;
 		}
 	}
 
@@ -678,7 +682,16 @@ int main(int argc, char **argv)
 	uloop_init();
 	ubus_auto_connect(&poe.conn);
 
-	if (poe_stream_open("/dev/ttyS1", &poe.mcu.stream, B115200) < 0)
+	switch (baudrate) {
+	case 115200:
+		dino_baud = B115200;
+		break;
+	case 19200: /* Fall through */
+	default:
+		dino_baud = B19200;
+		break;
+	}
+	if (poe_stream_open("/dev/ttyS1", &poe.mcu.stream, dino_baud) < 0)
 		return -1;
 
 	dialect->init_async(&poe.mcu, &poe.config);
