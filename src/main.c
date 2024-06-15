@@ -95,19 +95,44 @@ static void load_port_config(struct config *cfg, struct uci_context *uci,
 		cfg->ports[id].power_up_mode = 3;
 }
 
+static void warn_unsupported_config(const char *cfg_name)
+{
+	ULOG_WARN("Option '%s' found in config file.\n"
+		"Support for this option will be removed in the future\n."
+		"You have been warned\n",
+		cfg_name);
+}
+
 static void load_global_config(struct config *cfg, struct uci_context *uci,
 			       struct uci_section *s)
 
 {
-	const char *budget, *guardband;
+	const char *budget, *guardband, *baudrate_hack, *dialect_hack;
 
 	budget = uci_lookup_option_string(uci, s, "budget");
 	guardband = uci_lookup_option_string(uci, s, "guard");
+	baudrate_hack = uci_lookup_option_string(uci, s, "force_baudrate");
+	dialect_hack = uci_lookup_option_string(uci, s, "force_dialect");
 
 	cfg->budget = budget ? strtof(budget, NULL) : 31.0;
 	cfg->budget_guard = cfg->budget / 10;
 	if (guardband)
 		cfg->budget_guard = strtof(guardband, NULL);
+
+	if (baudrate_hack) {
+		warn_unsupported_config("force_baudrate");
+		cfg->forced_baudrate = strtoul(baudrate_hack, NULL, 10);
+	}
+
+	if (dialect_hack) {
+		warn_unsupported_config("force_dialect");
+		if (!strcmp(dialect_hack, "broadcom"))
+			cfg->forced_dialect = &broadcom_dialect;
+		else if (!strcmp(dialect_hack, "realtek"))
+			cfg->forced_dialect = &realtek_dialect;
+		else
+			ULOG_ERR("Unkown dialect '%s'\n", dialect_hack);
+	}
 }
 
 static char *get_board_compatible(void)
@@ -1198,6 +1223,8 @@ static void ubus_connect_handler(struct ubus_context *ctx)
 
 int main(int argc, char **argv)
 {
+	unsigned int baudrate = 0;
+	speed_t dino_baud;
 	int ch;
 
 	struct poe_ctx poe = {
@@ -1215,12 +1242,14 @@ int main(int argc, char **argv)
 	ulog_open(ULOG_STDIO | ULOG_SYSLOG, LOG_DAEMON, "realtek-poe");
 	ulog_threshold(LOG_INFO);
 
-	while ((ch = getopt(argc, argv, "d")) != -1) {
+	while ((ch = getopt(argc, argv, "ds")) != -1) {
 		switch (ch) {
 		case 'd':
 			ulog_threshold(LOG_DEBUG);
 			poe.hardcore_hacking_mode_en = 1;
 			break;
+		case 'f':
+			baudrate = 115200;
 		}
 	}
 
@@ -1229,10 +1258,31 @@ int main(int argc, char **argv)
 	uloop_init();
 	ubus_auto_connect(&poe.conn);
 
+	if (poe.config.forced_dialect)
+		poe.mcu.dialect.desc = poe.config.forced_dialect;
+
 	/* Users of poe_dialect assume the reverse mapping is computed. */
 	dialect_reverse_map(&poe.mcu.dialect);
 
-	if (poe_stream_open("/dev/ttyS1", &poe.mcu.stream, B19200) < 0)
+	/* Prefer '-s' argument over any config file option */
+	if (baudrate) {
+		/* Keep existing baudrate */
+	} else if (poe.config.forced_baudrate) {
+		baudrate = poe.config.forced_baudrate;
+	} else {
+		baudrate = 19200;
+	}
+
+	switch (baudrate) {
+	case 115200:
+		dino_baud = B115200;
+		break;
+	case 19200: /* Fall through */
+	default:
+		dino_baud = B19200;
+		break;
+	}
+	if (poe_stream_open("/dev/ttyS1", &poe.mcu.stream, dino_baud) < 0)
 		return -1;
 
 
