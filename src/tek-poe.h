@@ -116,11 +116,15 @@ struct port_config {
 	uint8_t power_budget;
 };
 
+struct poe_dialect;
+
 struct config {
 	float budget;
 	float budget_guard;
 
+	unsigned int forced_baudrate;
 	unsigned int port_count;
+	const struct poe_dialect *forced_dialect;
 	uint8_t pse_id_set_budget_mask;
 	struct port_config ports[MAX_PORT];
 };
