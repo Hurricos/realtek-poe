@@ -402,6 +402,8 @@ static int poe_reply_status(struct mcu_state *state, uint8_t *reply)
 
 	state->sys_mode = GET_STR(reply[2], mode);
 	state->num_detected_ports = reply[3];
+	state->port_map_en = reply[4];
+	state->device_id =  read16_be(reply + 5);
 	state->sys_version = reply[7];
 	state->sys_mcu = GET_STR(reply[8], mcu_names);
 	state->sys_status = GET_STR(reply[9], status);
@@ -421,6 +423,7 @@ static int poe_cmd_power_stats(struct mcu *mcu)
 static int poe_reply_power_stats(struct mcu_state *state, uint8_t *reply)
 {
 	state->power_consumption = read16_be(reply + 2) * 0.1;
+	state->reported_power_budget = read16_be(reply + 4) * 0.1;
 
 	return 0;
 }
@@ -435,6 +438,8 @@ static int poe_cmd_port_ext_config(struct mcu *mcu, uint8_t port)
 
 static int poe_reply_port_ext_config(struct mcu_state *state, uint8_t *reply)
 {
+	int port_idx = reply[2];
+
 	const char *mode[] = {
 		"PoE",
 		"Legacy",
@@ -442,7 +447,13 @@ static int poe_reply_port_ext_config(struct mcu_state *state, uint8_t *reply)
 		"PoE+"
 	};
 
-	state->ports[reply[2]].poe_mode = GET_STR(reply[3], mode);
+	state->ports[port_idx].poe_mode = GET_STR(reply[3], mode);
+	state->ports[port_idx].power_limit_type = reply[4];
+	state->ports[port_idx].power_budget = reply[5] * 0.2;
+	state->ports[port_idx].priority = reply[6];
+	state->ports[port_idx].primary_pse_output = reply[7];
+	/* In the broadcom dialect, pse output and mapping are synonymous. */
+	state->ports[port_idx].mapping = state->ports[port_idx].primary_pse_output;
 
 	return 0;
 }
@@ -818,6 +829,58 @@ static int ubus_poe_info_cb(struct ubus_context *ctx, struct ubus_object *obj,
 	return UBUS_STATUS_OK;
 }
 
+static int ubus_poe_debug_cb(struct ubus_context *ctx, struct ubus_object *obj,
+			    struct ubus_request_data *req, const char *method,
+			    struct blob_attr *msg)
+{
+	struct poe_ctx *poe = ubus_to_poe_ctx(ctx);
+	const struct mcu_state *state = &poe->mcu.state;
+	const struct config *cfg = &poe->config;
+	struct blob_buf *b = &poe->blob_buf;
+	size_t i;
+	void *c, *p;
+
+	blob_buf_init(b, 0);
+
+	blobmsg_add_double(b, "reported_budget", state->reported_power_budget);
+
+
+	blobmsg_add_u32(b, "num_detected_ports", state->num_detected_ports);
+	blobmsg_add_u32(b, "port_map_en", state->port_map_en);
+	blobmsg_add_u32(b, "device_id", state->device_id);
+
+	c = blobmsg_open_table(b, "ports");
+	for (i = 0; i < cfg->port_count; i++) {
+		if (!cfg->ports[i].valid)
+			continue;
+
+		p = blobmsg_open_table(b, cfg->ports[i].name);
+
+		blobmsg_add_u32(b, "power_limit_type", state->ports[i].power_limit_type);
+		blobmsg_add_double(b, "power_budget", state->ports[i].power_budget);
+		blobmsg_add_u32(b, "priority", state->ports[i].priority);
+		blobmsg_add_u32(b, "primary_pse_output", state->ports[i].primary_pse_output);
+		blobmsg_add_u32(b, "mapping", state->ports[i].mapping);
+
+		blobmsg_close_table(b, p);
+	}
+	blobmsg_close_table(b, c);
+
+	p = blobmsg_open_table(b, "mapping");
+	blobmsg_add_u32(b, "enabled", state->port_map_en);
+	for (i = 0; i < cfg->port_count; i++) {
+		if (!cfg->ports[i].valid)
+			continue;
+
+		blobmsg_add_u32(b, cfg->ports[i].name, state->ports[i].mapping);
+	}
+	blobmsg_close_table(b, p);
+
+	ubus_send_reply(ctx, req, b->head);
+
+	return UBUS_STATUS_OK;
+}
+
 static const struct blobmsg_policy ubus_poe_sendframe_policy[] = {
 	{ "frame", BLOBMSG_TYPE_STRING },
 };
@@ -910,6 +973,7 @@ static int ubus_poe_manage_cb(struct ubus_context *ctx, struct ubus_object *obj,
 
 static const struct ubus_method ubus_poe_methods[] = {
 	UBUS_METHOD_NOARG("info", ubus_poe_info_cb),
+	UBUS_METHOD_NOARG("debug", ubus_poe_debug_cb),
 	UBUS_METHOD_NOARG("reload", ubus_poe_reload_cb),
 	UBUS_METHOD("sendframe", ubus_poe_sendframe_cb, ubus_poe_sendframe_policy),
 	UBUS_METHOD("manage", ubus_poe_manage_cb, ubus_poe_manage_policy),
