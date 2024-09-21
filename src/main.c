@@ -833,6 +833,7 @@ ubus_poe_sendframe_cb(struct ubus_context *ctx, struct ubus_object *obj,
 	size_t cmd_len = 0;
 	unsigned long byte_val;
 	uint8_t cmd[9];
+	int ret;
 
 	blobmsg_parse(ubus_poe_sendframe_policy,
 		      ARRAY_SIZE(ubus_poe_sendframe_policy),
@@ -854,7 +855,8 @@ ubus_poe_sendframe_cb(struct ubus_context *ctx, struct ubus_object *obj,
 		frame = next;
 	}
 
-	return mcu_queue_cmd(mcu, cmd, cmd_len);
+	ret = mcu_queue_cmd(mcu, cmd, cmd_len);
+	return (ret < 0) ?  UBUS_STATUS_SYSTEM_ERROR : UBUS_STATUS_OK;
 }
 
 static int ubus_poe_reload_cb(struct ubus_context *ctx, struct ubus_object *obj,
