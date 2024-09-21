@@ -46,6 +46,7 @@ struct poe_ctx {
 	struct ubus_auto_conn conn;
 	struct blob_buf blob_buf;
 	struct uloop_timeout state_timeout;
+	unsigned int hardcore_hacking_mode_en : 1;
 };
 
 static struct poe_ctx *ubus_to_poe_ctx(struct ubus_context *u)
@@ -835,6 +836,9 @@ ubus_poe_sendframe_cb(struct ubus_context *ctx, struct ubus_object *obj,
 	uint8_t cmd[9];
 	int ret;
 
+	if (!poe->hardcore_hacking_mode_en)
+		return UBUS_STATUS_PERMISSION_DENIED;
+
 	blobmsg_parse(ubus_poe_sendframe_policy,
 		      ARRAY_SIZE(ubus_poe_sendframe_policy),
 		      tb, blob_data(msg), blob_len(msg));
@@ -952,6 +956,7 @@ int main(int argc, char **argv)
 		switch (ch) {
 		case 'd':
 			ulog_threshold(LOG_DEBUG);
+			poe.hardcore_hacking_mode_en = 1;
 			break;
 		}
 	}
