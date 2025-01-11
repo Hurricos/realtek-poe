@@ -358,6 +358,17 @@ static int poe_cmd_port_disconnect_type(struct mcu *mcu, uint8_t port,
 	return mcu_queue_cmd(mcu, cmd, sizeof(cmd));
 }
 
+/* no BCM equivalent - Set "auto_powerup" parameter
+ *	Has no BCM, ID, but needs to be set correctly. This is one of the main
+ *	reasons RTL8238B ports get stuck on "Requesting power" status, and
+ *	never transition to "Delivering power".
+ */
+static int poe_cmd_mystery_parameter(struct mcu *mcu, uint8_t ports[4],
+				     uint8_t enables[4])
+{
+	return poet_cmd_4_port(mcu, PORT_SET_AUTO_POWERUP, ports, enables);
+}
+
 /* 0x15 - Set port power limit type
  *	0: None. Power limit is 16.2W if the connected device is “low power”,
  *	   or the set high power limit if the device is “high power”.
@@ -877,6 +888,7 @@ static int poet_setup(struct mcu* mcu, const struct port_config *ports,
 		      size_t num_ports)
 {
 	uint8_t port_ids[4], priorities[4], powerup_mode[4], limit_type[4];
+	uint8_t disable_all[4] = {0, 0, 0, 0};
 	uint8_t enable_all[4] = {1, 1, 1, 1};
 	size_t i = 0, num_okay = 0;
 
@@ -894,6 +906,7 @@ static int poet_setup(struct mcu* mcu, const struct port_config *ports,
 				break;
 		};
 
+		memset(disable_all + num_okay, 0xff, 4 - num_okay);
 		memset(enable_all + num_okay, 0xff, 4 - num_okay);
 		memset(port_ids + num_okay, 0xff, 4 - num_okay);
 		memset(priorities + num_okay, 0xff, 4 - num_okay);
@@ -904,6 +917,7 @@ static int poet_setup(struct mcu* mcu, const struct port_config *ports,
 		poe_set_port_power_up_mode(mcu, port_ids, powerup_mode);
 		poe_cmd_port_classification(mcu, port_ids, enable_all);
 		poe_cmd_port_power_limit_type(mcu, port_ids, limit_type);
+		poe_cmd_mystery_parameter(mcu, port_ids, disable_all);
 
 		num_okay = 0;
 	} while (++i < num_ports);
