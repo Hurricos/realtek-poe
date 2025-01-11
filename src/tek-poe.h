@@ -15,6 +15,9 @@
 
 struct port_state {
 	const char *status;
+	float mvolt;
+	float mampere;
+	float tempc;
 	float watt;
 	const char *poe_mode;
 };
