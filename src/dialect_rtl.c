@@ -58,7 +58,7 @@ static int rtl_cmd_global_power_budget(uint8_t pse, float budget, float guard)
 	return poe_cmd_queue(cmd, sizeof(cmd));
 }
 
-static int maybe_set_port_classification(uint8_t ports[4], uint8_t enables[4])
+static int rtl_set_mystery_parameter(uint8_t ports[4], uint8_t enables[4])
 {
 	return poet_cmd_4_port(0x08, ports, enables);
 }
@@ -408,7 +408,7 @@ static int rtl_handle_reply(struct mcu_state *ctx, uint8_t *reply, size_t len)
 static int poet_setup(const struct port_config *ports, size_t num_ports)
 {
 	uint8_t port_ids[4], priorities[4], powerup_mode[4], limit_type[4];
-	uint8_t enable_all[4] = {1, 1, 1, 1};
+	uint8_t disable_all[4] = {0, 0, 0, 0};
 	size_t i = 0, num_okay = 0;
 
 	do {
@@ -425,7 +425,7 @@ static int poet_setup(const struct port_config *ports, size_t num_ports)
 				break;
 		};
 
-		memset(enable_all + num_okay, 0xff, 4 - num_okay);
+		memset(disable_all + num_okay, 0xff, 4 - num_okay);
 		memset(port_ids + num_okay, 0xff, 4 - num_okay);
 		memset(priorities + num_okay, 0xff, 4 - num_okay);
 		memset(powerup_mode + num_okay, 0xff, 4 - num_okay);
@@ -433,7 +433,7 @@ static int poet_setup(const struct port_config *ports, size_t num_ports)
 
 		rtl_set_port_priority(port_ids, priorities);
 		rtl_set_port_power_up_mode(port_ids, powerup_mode);
-		maybe_set_port_classification(port_ids, enable_all);
+		rtl_set_mystery_parameter(port_ids, disable_all);
 		rtl_cmd_port_power_limit_type(port_ids, limit_type);
 
 		num_okay = 0;
