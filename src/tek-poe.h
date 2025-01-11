@@ -19,6 +19,42 @@ struct port_state {
 	const char *poe_mode;
 };
 
+struct port_config {
+	char name[16];
+	unsigned int valid : 1;
+	unsigned int enable : 1;
+	uint8_t priority;
+	uint8_t power_up_mode;
+	uint8_t power_budget;
+};
+
+struct port_led_config {
+	uint8_t enable:1;
+	uint8_t interface:1;
+	uint8_t shift_order:1;
+	uint8_t led_count:2;
+	uint8_t blink_override:2;
+	uint8_t state_off;
+	uint8_t state_req;
+	uint8_t state_err;
+	uint8_t state_on;
+};
+
+struct port_led_map {
+	uint8_t offset;
+	uint8_t ports[8];
+};
+
+struct system_led_config {
+	uint8_t sys_ok:1;
+	uint8_t in_gb:2;
+	uint8_t out_of_gb:2;
+	uint8_t exceeds_ps:2;
+	uint8_t out_of_gb_off_delay;
+	uint8_t exceeds_ps_off_delay;
+	uint8_t map_enable;
+};
+
 struct mcu_state {
 	const char *sys_mode;
 	uint8_t sys_version;
@@ -28,16 +64,10 @@ struct mcu_state {
 	float power_consumption;
 	unsigned int num_detected_ports;
 
-	struct port_state ports[MAX_PORT];
-};
-
-struct port_config {
-	char name[16];
-	unsigned int valid : 1;
-	unsigned int enable : 1;
-	uint8_t priority;
-	uint8_t power_up_mode;
-	uint8_t power_budget;
+	struct port_state        ports[MAX_PORT];
+	struct port_led_config   portledconfig;
+	struct port_led_map      ledmaps[(MAX_PORT + 7) / 8];
+	struct system_led_config sysledconfig;
 };
 
 struct config {

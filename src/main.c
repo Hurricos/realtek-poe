@@ -502,12 +502,95 @@ static int poe_reply_port_power_stats(struct mcu_state *state, uint8_t *reply)
 	return 0;
 }
 
+/* 0x42 - Get port LED config */
+static int poe_cmd_port_led_config(struct mcu *mcu, uint8_t port)
+{
+	uint8_t cmd[] = { 0x42, 0x00 };
+
+	return mcu_queue_cmd(mcu, cmd, sizeof(cmd));
+}
+
+static int poe_reply_port_led_config(struct mcu_state *state, uint8_t *reply)
+{
+	state->portledconfig.enable         = reply[0x2] != 0;
+	state->portledconfig.interface      = reply[0x3] & 0x1;
+	state->portledconfig.shift_order    = reply[0x4] & 0x1;
+	state->portledconfig.led_count      = reply[0x5] & 0x3;
+	state->portledconfig.state_off      = reply[0x6];
+	state->portledconfig.state_req      = reply[0x7];
+	state->portledconfig.state_err      = reply[0x8];
+	state->portledconfig.state_on       = reply[0x9];
+	state->portledconfig.blink_override = reply[0xa] & 0x3;
+
+	return 0;
+}
+
+/* 0x44 - Get system LED config */
+static int poe_cmd_system_led_config(struct mcu *mcu)
+{
+	uint8_t cmd[] = { 0x44, 0x00 };
+
+	return mcu_queue_cmd(mcu, cmd, sizeof(cmd));
+}
+
+static int poe_reply_system_led_config(struct mcu_state *state, uint8_t *reply)
+{
+	state->sysledconfig.sys_ok               = reply[0x2] & 0x1;
+	state->sysledconfig.in_gb                = reply[0x3] & 0x3;
+	state->sysledconfig.out_of_gb            = reply[0x4] & 0x3;
+	state->sysledconfig.exceeds_ps           = reply[0x5] & 0x3;
+	state->sysledconfig.out_of_gb_off_delay  = reply[0x6];
+	state->sysledconfig.exceeds_ps_off_delay = reply[0x7];
+	state->sysledconfig.map_enable           = reply[0x8];
+
+	/* normalise map_enable value */
+	if (state->sysledconfig.map_enable == 0xff)
+		state->sysledconfig.map_enable = 0;
+
+	return 0;
+}
+
+/* 0x49 - Get port LED map */
+static int poe_cmd_port_led_map(struct mcu *mcu, uint8_t port)
+{
+	uint8_t cmd[] = { 0x49, 0x00, port };
+
+	/* can/should only call this once for every set of 8 */
+	if (port % 8 != 0)
+		return 1;
+
+	return mcu_queue_cmd(mcu, cmd, sizeof(cmd));
+}
+
+static int poe_reply_port_led_map(struct mcu_state *state, uint8_t *reply)
+{
+	struct port_led_map *map = &state->ledmaps[reply[0x2] / 8];
+
+	map->offset = reply[0x2];
+
+	/* unroll the loop, it's always going to be 8 and not worth the
+	 * effort to set it programmatically */
+	map->ports[0] = reply[0x3];
+	map->ports[1] = reply[0x4];
+	map->ports[2] = reply[0x5];
+	map->ports[3] = reply[0x6];
+	map->ports[4] = reply[0x7];
+	map->ports[5] = reply[0x8];
+	map->ports[6] = reply[0x9];
+	map->ports[7] = reply[0xa];
+
+	return 0;
+}
+
 static poe_reply_handler reply_handler[] = {
 	[0x20] = poe_reply_status,
 	[0x23] = poe_reply_power_stats,
 	[0x26] = poe_reply_port_ext_config,
 	[0x28] = poe_reply_4_port_status,
 	[0x30] = poe_reply_port_power_stats,
+	[0x42] = poe_reply_port_led_config,
+	[0x44] = poe_reply_system_led_config,
+	[0x49] = poe_reply_port_led_map,
 };
 
 static void mcu_clear_timeout(struct uloop_timeout *t)
@@ -755,6 +838,7 @@ static void state_timeout_cb(struct uloop_timeout *t)
 	size_t i;
 
 	poe_cmd_power_stats(mcu);
+	poe_cmd_system_led_config(mcu);
 
 	for (i = 0; i < cfg->port_count; i += 4)
 		poe_cmd_4_port_status(mcu, i, i + 1, i + 2, i + 3);
@@ -762,9 +846,134 @@ static void state_timeout_cb(struct uloop_timeout *t)
 	for (i = 0; i < cfg->port_count; i++) {
 		poe_cmd_port_ext_config(mcu, i);
 		poe_cmd_port_power_stats(mcu, i);
+		poe_cmd_port_led_config(mcu, i);
+		poe_cmd_port_led_map(mcu, i);
 	}
 
 	uloop_timeout_set(t, 2 * 1000);
+}
+
+static int ubus_poe_ledsinfo_cb
+(
+	struct ubus_context      *ctx,
+	struct ubus_object       *obj,
+	struct ubus_request_data *req,
+	const char               *method,
+	struct blob_attr         *msg
+)
+{
+	struct poe_ctx         *poe   = ubus_to_poe_ctx(ctx);
+	const struct mcu_state *state = &poe->mcu.state;
+	const struct config    *cfg   = &poe->config;
+	struct blob_buf        *b     = &poe->blob_buf;
+	const char             *val;
+	char                    tmp[64];
+	size_t                  i;
+	void                   *c;
+
+	const char *sys_led_mode[] = {
+		"off",
+		"on",
+		"blink slow",
+		"blink fast",
+		"on when PoE+",
+		"on when PoE"
+	};
+
+	const char *blink_override_mode[] = {
+		"none",
+		"blink when port status is 'requesting'",
+		"blink when port status is 'fault'",
+		"blink when port status is 'requesting' or 'fault'"
+	};
+
+	blob_buf_init(b, 0);
+
+	/* system LED config */
+	c = blobmsg_open_table(b, "system");
+
+#define add_str_from_arr(N, V, A) \
+	val = GET_STR(V, A); \
+	if (val != NULL) \
+		blobmsg_add_string(b, N, val); \
+	else \
+		blobmsg_add_u32(b, N, V);
+	add_str_from_arr("sys_ok",
+					 state->sysledconfig.sys_ok, sys_led_mode);
+	add_str_from_arr("in_gb",
+					 state->sysledconfig.in_gb,  sys_led_mode);
+	add_str_from_arr("out_of_gb",
+					 state->sysledconfig.out_of_gb, sys_led_mode);
+	add_str_from_arr("exceeds_ps",
+					 state->sysledconfig.exceeds_ps, sys_led_mode);
+	blobmsg_add_u32(b, "out_of_gb_off_delay",
+				   state->sysledconfig.out_of_gb_off_delay);
+	blobmsg_add_u32(b, "exceeds_ps_off_delay",
+				   state->sysledconfig.exceeds_ps_off_delay);
+	blobmsg_add_u8(b, "map_enable", state->sysledconfig.map_enable);
+
+	blobmsg_close_table(b, c);
+
+	/* display the port map, even when unset, it may contain default data */
+	c = blobmsg_open_table(b, "map");
+
+	if (state->ledmaps[0].offset == 0) {
+		for (i = 0; i < cfg->port_count; i++) {
+			const struct port_led_map *map = &state->ledmaps[i / 8];
+			if (i % 8 == 0) {
+				snprintf(tmp, sizeof(tmp), "map_%u_offset", i / 8);
+				blobmsg_add_u32(b, tmp, map->offset);
+			}
+			blobmsg_add_u32(b, cfg->ports[i].name, map->ports[i % 8]);
+		}
+	} else {
+		blobmsg_add_string(b, "map_0_offset", "error");
+	}
+
+	blobmsg_close_table(b, c);
+
+	/* port LED config */
+	c = blobmsg_open_table(b, "port");
+
+	blobmsg_add_u8(b, "enable", state->portledconfig.enable);
+	blobmsg_add_string(b, "interface",
+					   state->portledconfig.interface ? "GPIO" : "SPI");
+	blobmsg_add_string(b, "shift_order",
+					   state->portledconfig.shift_order ? "MSB" : "LSB");
+	blobmsg_add_u32(b, "port_led_count", state->portledconfig.led_count);
+
+#define led_state_to_str(S, C, T, F) \
+	if (state->portledconfig.led_count == 1) { \
+		snprintf(tmp, sizeof(tmp), "led %s", \
+				 GET_STR(S & 1 ? S & C ? T : 1 : F, sys_led_mode)); \
+	} else { \
+		snprintf(tmp, sizeof(tmp), "led 1 %s, led 2 %s", \
+				 GET_STR(S & (1<<0) ? S & C ? T : 1 : F, sys_led_mode), \
+				 GET_STR(S & (1<<1) ? S & C ? T : 1 : F, sys_led_mode)); \
+	}
+	led_state_to_str(state->portledconfig.state_off, 0x00, 0, 0);
+	blobmsg_add_string(b, "state_off", tmp);
+	led_state_to_str(state->portledconfig.state_req, 0x80, 2, 0);
+	blobmsg_add_string(b, "state_req", tmp);
+	led_state_to_str(state->portledconfig.state_err, 0x80, 3, 0);
+	blobmsg_add_string(b, "state_err", tmp);
+	if (state->portledconfig.state_on & 0x40 &&
+		state->portledconfig.led_count == 2)
+	{
+		led_state_to_str(state->portledconfig.state_on, 0x40, 4, 5);
+	} else {
+		led_state_to_str(state->portledconfig.state_on, 0x00, 0, 0);
+	}
+	blobmsg_add_string(b, "state_on", tmp);
+
+	add_str_from_arr("blink_override",
+					 state->portledconfig.blink_override, blink_override_mode);
+
+	blobmsg_close_table(b, c);
+
+	ubus_send_reply(ctx, req, b->head);
+
+	return UBUS_STATUS_OK;
 }
 
 static int ubus_poe_info_cb(struct ubus_context *ctx, struct ubus_object *obj,
@@ -910,6 +1119,7 @@ static int ubus_poe_manage_cb(struct ubus_context *ctx, struct ubus_object *obj,
 
 static const struct ubus_method ubus_poe_methods[] = {
 	UBUS_METHOD_NOARG("info", ubus_poe_info_cb),
+	UBUS_METHOD_NOARG("debug_leds", ubus_poe_ledsinfo_cb),
 	UBUS_METHOD_NOARG("reload", ubus_poe_reload_cb),
 	UBUS_METHOD("sendframe", ubus_poe_sendframe_cb, ubus_poe_sendframe_policy),
 	UBUS_METHOD("manage", ubus_poe_manage_cb, ubus_poe_manage_policy),
