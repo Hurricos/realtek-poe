@@ -15,18 +15,18 @@
 
 struct port_state {
 	const char *status;
-	float watt;
 	const char *poe_mode;
+	float watt;
 };
 
 struct mcu_state {
 	const char *sys_mode;
-	uint8_t sys_version;
 	const char *sys_mcu;
 	const char *sys_status;
-	uint8_t sys_ext_version;
 	float power_consumption;
 	unsigned int num_detected_ports;
+	uint8_t sys_version;
+	uint8_t sys_ext_version;
 
 	struct port_state ports[MAX_PORT];
 };
