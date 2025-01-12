@@ -937,6 +937,8 @@ static void ubus_connect_handler(struct ubus_context *ctx)
 int main(int argc, char **argv)
 {
 	int ch;
+	int treshold = LOG_INFO;
+	int channels = ULOG_SYSLOG;
 
 	struct poe_ctx poe = {
 		.state_timeout.cb = state_timeout_cb,
@@ -949,17 +951,19 @@ int main(int argc, char **argv)
 	};
 
 	INIT_LIST_HEAD(&poe.mcu.pending_cmds);
-	ulog_open(ULOG_STDIO | ULOG_SYSLOG, LOG_DAEMON, "realtek-poe");
-	ulog_threshold(LOG_INFO);
 
 	while ((ch = getopt(argc, argv, "d")) != -1) {
 		switch (ch) {
 		case 'd':
-			ulog_threshold(LOG_DEBUG);
+			treshold  = LOG_DEBUG;
+			channels |= ULOG_STDIO;
 			poe.hardcore_hacking_mode_en = 1;
 			break;
 		}
 	}
+
+	ulog_open(channels, LOG_DAEMON, "realtek-poe");
+	ulog_threshold(treshold);
 
 	config_load(&poe.config, 1);
 
