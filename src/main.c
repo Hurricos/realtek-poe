@@ -412,6 +412,32 @@ static int poe_reply_status(struct mcu_state *state, uint8_t *reply)
 	return 0;
 }
 
+/* 0x21 - Get port status */
+static int poe_cmd_port_status(struct mcu *mcu, uint8_t port)
+{
+	uint8_t cmd[] = { 0x21, 0x00, port };
+
+	return mcu_queue_cmd(mcu, cmd, sizeof(cmd));
+}
+
+static int poe_reply_port_status(struct mcu_state *state, uint8_t *reply)
+{
+	unsigned int idx = reply[2];
+	struct port_state *port = &state->ports[idx];
+
+	if (idx > state->num_detected_ports) {
+		ULOG_WARN("Invalid port in status reply (port=%d)\n", idx);
+		return -EPROTO;
+	}
+
+	port->class_info = reply[5];
+	port->pd_type = reply[6];
+	port->mpss_mask = reply[7];
+	port->has_detailed_state = 1;
+
+	return 0;
+}
+
 /* 0x23 - Get power statistics */
 static int poe_cmd_power_stats(struct mcu *mcu)
 {
@@ -424,6 +450,35 @@ static int poe_reply_power_stats(struct mcu_state *state, uint8_t *reply)
 {
 	state->power_consumption = read16_be(reply + 2) * 0.1;
 	state->reported_power_budget = read16_be(reply + 4) * 0.1;
+
+	return 0;
+}
+
+/* 0x25 - Get port config */
+static int poe_cmd_port_config(struct mcu *mcu, uint8_t port)
+{
+	uint8_t cmd[] = { 0x25, 0x00, port };
+
+	return mcu_queue_cmd(mcu, cmd, sizeof(cmd));
+}
+
+static int poe_reply_port_config(struct mcu_state *state, uint8_t *reply)
+{
+	unsigned int idx = reply[2];
+	struct port_state *port = &state->ports[idx];
+
+	if (idx > state->num_detected_ports) {
+		ULOG_WARN("Invalid port in config reply (port=%d)\n", idx);
+		return -EPROTO;
+	}
+
+	port->enabled = reply[4];
+	port->auto_powerup = reply[4];
+	port->detection_type = reply[5];
+	port->classification_enable = reply[6];
+	port->disconnect_type = reply[7];
+	port->pair = reply[8];
+	port->has_ext_config = 1;
 
 	return 0;
 }
@@ -503,6 +558,28 @@ static int poe_reply_4_port_status(struct mcu_state *state, uint8_t *reply)
 	return 0;
 }
 
+/* 0x2b - Get extended device config */
+static int poe_cmd_get_extended_config(struct mcu *mcu)
+{
+	uint8_t cmd[] = { 0x2b };
+
+	return mcu_queue_cmd(mcu, cmd, sizeof(cmd));
+}
+
+static int poe_reply_extended_config(struct mcu_state *state, uint8_t *reply)
+{
+	state->uvlo_threshold = reply[2] * 0.06445 + 33.0;
+	state->pre_alloc = reply[3];
+	state->powerup_mode = reply[4];
+	state->disconnect_type = reply[5];
+	state->ddflag = reply[6];
+	state->ovlo_threshold = reply[7] * 0.06445 + 57.0;
+	state->num_pse = reply[8];
+	state->has_ext_cfg_info = 1;
+
+	return 0;
+}
+
 /* 0x30 - Get port power statistics */
 static int poe_cmd_port_power_stats(struct mcu *mcu, uint8_t port)
 {
@@ -521,9 +598,12 @@ static int poe_reply_port_power_stats(struct mcu_state *state, uint8_t *reply)
 
 static poe_reply_handler reply_handler[] = {
 	[0x20] = poe_reply_status,
+	[0x21] = poe_reply_port_status,
 	[0x23] = poe_reply_power_stats,
 	[0x26] = poe_reply_port_ext_config,
+	[0x25] = poe_reply_port_config,
 	[0x28] = poe_reply_4_port_status,
+	[0x2b] = poe_reply_extended_config,
 	[0x30] = poe_reply_port_power_stats,
 };
 
@@ -772,11 +852,18 @@ static void state_timeout_cb(struct uloop_timeout *t)
 	size_t i;
 
 	poe_cmd_power_stats(mcu);
+	if (poe->hardcore_hacking_mode_en)
+		poe_cmd_get_extended_config(mcu);
 
 	for (i = 0; i < cfg->port_count; i += 4)
 		poe_cmd_4_port_status(mcu, i, i + 1, i + 2, i + 3);
 
 	for (i = 0; i < cfg->port_count; i++) {
+		if (poe->hardcore_hacking_mode_en) {
+			poe_cmd_port_status(mcu, i);
+			poe_cmd_port_config(mcu, i);
+		}
+
 		poe_cmd_port_ext_config(mcu, i);
 		poe_cmd_port_power_stats(mcu, i);
 	}
@@ -855,6 +942,16 @@ static int ubus_poe_debug_cb(struct ubus_context *ctx, struct ubus_object *obj,
 	blobmsg_add_u32(b, "port_map_en", state->port_map_en);
 	blobmsg_add_u32(b, "device_id", state->device_id);
 
+	if (state->has_ext_cfg_info) {
+		blobmsg_add_double(b, "uvlo_threshold", state->uvlo_threshold);
+		blobmsg_add_double(b, "ovlo_threshold", state->ovlo_threshold);
+		blobmsg_add_u32(b, "pre_alloc", state->pre_alloc);
+		blobmsg_add_u32(b, "powerup_mode", state->powerup_mode);
+		blobmsg_add_u32(b, "disconnect_type", state->disconnect_type);
+		blobmsg_add_u32(b, "ddflag", state->ddflag);
+		blobmsg_add_u32(b, "num_pse", state->num_pse);
+	}
+
 	c = blobmsg_open_table(b, "ports");
 	for (i = 0; i < cfg->port_count; i++) {
 		if (!cfg->ports[i].valid)
@@ -867,6 +964,21 @@ static int ubus_poe_debug_cb(struct ubus_context *ctx, struct ubus_object *obj,
 		blobmsg_add_u32(b, "priority", state->ports[i].priority);
 		blobmsg_add_u32(b, "primary_pse_output", state->ports[i].primary_pse_output);
 		blobmsg_add_u32(b, "mapping", state->ports[i].mapping);
+
+		if (state->ports[i].has_ext_config) {
+			blobmsg_add_u32(b, "enabled", state->ports[i].enabled);
+			blobmsg_add_u32(b, "auto_powerup", state->ports[i].auto_powerup);
+			blobmsg_add_u32(b, "detection_type", state->ports[i].detection_type);
+			blobmsg_add_u32(b, "classification_enable", state->ports[i].classification_enable);
+			blobmsg_add_u32(b, "disconnect_type", state->ports[i].disconnect_type);
+			blobmsg_add_u32(b, "pair", state->ports[i].pair);
+		}
+
+		if (state->ports[i].has_detailed_state) {
+			blobmsg_add_u32(b, "class_info", state->ports[i].class_info);
+			blobmsg_add_u32(b, "pd_type", state->ports[i].pd_type);
+			blobmsg_add_u32(b, "mpss_mask", state->ports[i].mpss_mask);
+		}
 
 		blobmsg_close_table(b, p);
 	}

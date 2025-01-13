@@ -19,10 +19,24 @@ struct port_state {
 	float power_budget;
 	float watt;
 
+	unsigned int has_ext_config : 1;
+	unsigned int has_detailed_state : 1;
+
 	uint8_t power_limit_type;
 	uint8_t priority;
 	uint8_t primary_pse_output;
 	uint8_t mapping;
+
+	uint8_t enabled;
+	uint8_t auto_powerup;
+	uint8_t detection_type;
+	uint8_t classification_enable;
+	uint8_t disconnect_type;
+	uint8_t pair;
+
+	uint8_t class_info;
+	uint8_t pd_type;
+	uint8_t mpss_mask;
 };
 
 struct mcu_state {
@@ -31,11 +45,22 @@ struct mcu_state {
 	const char *sys_status;
 	float power_consumption;
 	float reported_power_budget;
+	float uvlo_threshold;
+	float ovlo_threshold;
 	unsigned int num_detected_ports;
+
+	unsigned int has_ext_cfg_info : 1;
+
 	uint16_t device_id;
 	uint8_t sys_version;
 	uint8_t sys_ext_version;
 	uint8_t port_map_en;
+
+	uint8_t pre_alloc;
+	uint8_t powerup_mode;
+	uint8_t disconnect_type;
+	uint8_t ddflag;
+	uint8_t num_pse;
 
 	struct port_state ports[MAX_PORT];
 };
