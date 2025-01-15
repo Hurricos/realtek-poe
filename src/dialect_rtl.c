@@ -8,6 +8,31 @@
 
 typedef int (*poe_reply_handler)(struct mcu_state *ctx, uint8_t *reply);
 
+static struct dialect_map rtl_dialect_map[0x100] = {
+	[MCU_SET_POWER_MGMT_MODE] 	= {0x10, 0},
+	[MCU_SET_POWER_BUDGET]		= {0x04, 0},
+	// [MCU_ENABLE_PORT_MAPPING]	= {0x02, 0},
+	[PORT_ENABLE]			= {0x01, 0},
+	// [PORT_ENABLE_CLASSIFICATION]	= {0x11, CMD_IS_4PORT},
+	[PORT_SET_DETECTION_TYPE]	= {0x09, CMD_IS_4PORT},
+	[PORT_SET_PRIORITY]		= {0x15, CMD_IS_4PORT},
+	[PORT_SET_POE_MODE]		= {0x0c, CMD_IS_4PORT},
+	[PORT_SET_DISCONNECT_TYPE]	= {0x0f, CMD_IS_4PORT},
+	[PORT_SET_POWER_LIMIT_TYPE]	= {0x12, CMD_IS_4PORT},
+	[PORT_SET_AUTO_POWERUP]		= {0x08, CMD_IS_4PORT},
+	[PORT_SET_POWER_LIMIT]		= {0x13, 0},
+
+	[MCU_GET_SYSTEM_INFO]		= {0x40, 0},
+	[MCU_GET_POWER_STATS]		= {0x41, 0},
+	[PORT_GET_EXT_CONFIG]		= {0x49, 0},
+	// [PORT_GET_SHORT_STATUS]		= {0x28, CMD_IS_4PORT},
+	[PORT_GET_POWER_STATS]		= {0x44, 0},
+	[MCU_GET_EXT_CONFIG]		= {0x4a, 0},
+	[PORT_GET_CONFIG]		= {0x48, 0},
+	[PORT_GET_STATUS]		= {0x42, 0},
+	[PORT_GET_SHORT_STATUS]		= {0x43, CMD_IS_RETARDED_4PORT},
+};
+
 /* Careful with this; Only works for set_detection/disconnect_type commands. */
 #define PORT_ID_ALL	0x7f
 #define PORT_ID_WRONG_DIALECT		0x61
@@ -358,22 +383,22 @@ static int rtl_reply_4_port(struct mcu_state *mcu, uint8_t *reply)
 }
 
 static poe_reply_handler reply_handler[] = {
-	[0x01] = rtl_reply_4_port,
-	[0x03] = rtl_reply_4_port,
-	[0x08] = rtl_reply_4_port,
-	[0x0c] = rtl_reply_4_port,
-	[0x12] = rtl_reply_4_port,
-	[0x13] = rtl_reply_4_port,
-	[0x14] = rtl_reply_4_port,
-	[0x15] = rtl_reply_4_port,
-	[0x40] = rtl_reply_status,
-	[0x41] = rtl_reply_power_stats,
-	[0x42] = rtl_reply_port_status,
-	[0x43] = rtl_reply_4_port_group_status,
-	[0x44] = rtl_reply_port_power_stats,
-	[0x48] = rtl_reply_port_config,
-	[0x49] = rtl_reply_port_ext_config,
-	[0x4a] = rtl_reply_ext_config,
+	[PORT_ENABLE]			= rtl_reply_4_port,
+	// [0x03] = rtl_reply_4_port,
+	[PORT_SET_AUTO_POWERUP]		= rtl_reply_4_port,
+	[PORT_SET_POE_MODE]		= rtl_reply_4_port,
+	[PORT_SET_POWER_LIMIT_TYPE]	= rtl_reply_4_port,
+	[PORT_SET_POWER_LIMIT]		= rtl_reply_4_port,
+	// [0x14] = rtl_reply_4_port,
+	[PORT_SET_PRIORITY]		= rtl_reply_4_port,
+	[MCU_GET_SYSTEM_INFO]		= rtl_reply_status,
+	[MCU_GET_POWER_STATS]		= rtl_reply_power_stats,
+	[PORT_GET_STATUS]		= rtl_reply_port_status,
+	[PORT_GET_SHORT_STATUS]		= rtl_reply_4_port_group_status,
+	[PORT_GET_POWER_STATS]		= rtl_reply_port_power_stats,
+	[PORT_GET_CONFIG]		= rtl_reply_port_config,
+	[PORT_GET_EXT_CONFIG]		= rtl_reply_port_ext_config,
+	[MCU_GET_EXT_CONFIG]		= rtl_reply_ext_config,
 };
 
 static int poe_default_reply_handler(uint8_t *reply)
@@ -388,16 +413,19 @@ static int poe_default_reply_handler(uint8_t *reply)
 
 static int rtl_handle_reply(struct mcu_state *ctx, uint8_t *reply, size_t len)
 {
+	int command;
+
 	if (len != 12)
 		return -EINVAL;
 
-	if (reply[0] > ARRAY_SIZE(reply_handler)) {
+	command = rev_lookup(rtl_dialect_map, reply[0]);
+	if (command < 0) {
 		ULOG_DBG("rtl: received reply with bad command id\n");
 		return -1;
 	}
 
-	if (reply_handler[reply[0]]) {
-		return reply_handler[reply[0]](ctx, reply);
+	if (reply_handler[command]){
+		return reply_handler[command](ctx, reply);
 	} else {
 		poe_default_reply_handler(reply);
 	}
@@ -480,6 +508,7 @@ static void poe_set_power_budget(const struct config *config)
 static int rtl_initial_setup(struct mcu *mcu, const struct config *config)
 {
 	hack_mcu = mcu;
+	rev_map(rtl_dialect_map);
 
 	rtl_cmd_pse_up(true);
 	rtl_cmd_why_u_reset();
