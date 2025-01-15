@@ -1225,7 +1225,7 @@ static int ubus_poe_manage_cb(struct ubus_context *ctx, struct ubus_object *obj,
 			continue;
 		return poe_cmd_port_enable(mcu, i, blobmsg_get_bool(tb[1]));
 	}
-	return UBUS_STATUS_INVALID_ARGUMENT;
+	return UBUS_STATUS_OK;
 }
 
 static const struct ubus_method ubus_poe_methods[] = {
