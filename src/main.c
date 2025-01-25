@@ -26,6 +26,9 @@ typedef int (*poe_reply_handler)(struct mcu_state *mcu, uint8_t *reply);
 #define PORT_ID_ALL	0x7f
 #define MAX_RETRIES	5
 
+#define CMD_SIZE	12
+#define OFFSET_CHECKSUM	(CMD_SIZE - 1)
+
 struct mcu {
 	struct uloop_timeout error_timeout;
 	struct list_head pending_cmds;
@@ -36,7 +39,7 @@ struct mcu {
 
 struct cmd {
 	struct list_head list;
-	uint8_t cmd[12];
+	uint8_t cmd[CMD_SIZE];
 	unsigned int num_retries;
 };
 
@@ -209,15 +212,15 @@ static int mcu_queue_cmd(struct mcu *mcu, uint8_t *cmd_buf, size_t len)
 	struct cmd *cmd = malloc(sizeof(*cmd));
 
 	memset(cmd, 0, sizeof(*cmd));
-	memset(cmd->cmd, 0xff, 12);
+	memset(cmd->cmd, 0xff, CMD_SIZE);
 	memcpy(cmd->cmd, cmd_buf, len);
 
 	mcu->cmd_seq++;
 	cmd->cmd[1] = mcu->cmd_seq;
-	cmd->cmd[11] = 0;
+	cmd->cmd[OFFSET_CHECKSUM] = 0;
 
-	for (i = 0; i < 11; i++)
-		cmd->cmd[11] += cmd->cmd[i];
+	for (i = 0; i < OFFSET_CHECKSUM; i++)
+		cmd->cmd[OFFSET_CHECKSUM] += cmd->cmd[i];
 
 	list_add_tail(&cmd->list, &mcu->pending_cmds);
 
@@ -469,7 +472,7 @@ static int poe_reply_4_port_status(struct mcu_state *state, uint8_t *reply)
 		[6] = "Requesting power",
 	};
 
-	for (i = 2; i < 11; i+=2) {
+	for (i = 2; i < OFFSET_CHECKSUM; i+=2) {
 		port = reply[i];
 		pstate = reply[i + 1];
 
@@ -570,10 +573,10 @@ static int mcu_handle_reply(struct mcu *mcu, uint8_t *reply)
 	cmd_id = cmd->cmd[0];
 	cmd_seq = cmd->cmd[1];
 
-	for (i = 0; i < 11; i++)
+	for (i = 0; i < OFFSET_CHECKSUM; i++)
 		sum += reply[i];
 
-	if (reply[11] != sum) {
+	if (reply[OFFSET_CHECKSUM] != sum) {
 		ULOG_DBG("received reply with bad checksum\n");
 		free(cmd);
 		return -1;
@@ -833,7 +836,7 @@ ubus_poe_sendframe_cb(struct ubus_context *ctx, struct ubus_object *obj,
 	char *frame, *next, *end;
 	size_t cmd_len = 0;
 	unsigned long byte_val;
-	uint8_t cmd[9];
+	uint8_t cmd[CMD_SIZE];
 	int ret;
 
 	if (!poe->hardcore_hacking_mode_en)
