@@ -619,7 +619,32 @@ static int poe_reply_port_power_stats(struct mcu_state *state, uint8_t *reply)
 	return 0;
 }
 
+static int poe_reply_4_port(struct mcu_state *mcu, uint8_t *reply)
+{
+	uint8_t port, ret;
+	int i;
+
+	for (i = 2; i < 10; i += 2) {
+		port = reply[i];
+		ret = reply[i + 1];
+		if (port == 0xff)
+			continue;
+
+		if (ret)
+			ULOG_WARN("Command %02x failed for port %d with code %d\n",
+				  reply[0], port, ret);
+	}
+
+	return 0;
+}
+
 static poe_reply_handler reply_handler[] = {
+	[PORT_ENABLE]                   = poe_reply_4_port,
+	[PORT_SET_AUTO_POWERUP]         = poe_reply_4_port,
+	[PORT_SET_POE_MODE]             = poe_reply_4_port,
+	[PORT_SET_POWER_LIMIT_TYPE]     = poe_reply_4_port,
+	[PORT_SET_POWER_LIMIT]          = poe_reply_4_port,
+	[PORT_SET_PRIORITY]             = poe_reply_4_port,
 	[MCU_GET_SYSTEM_INFO]		= poe_reply_status,
 	[MCU_GET_POWER_STATS]		= poe_reply_power_stats,
 	[PORT_GET_STATUS]		= poe_reply_port_status,
