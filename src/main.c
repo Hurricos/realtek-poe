@@ -423,7 +423,10 @@ static int poe_reply_status(struct mcu_state *state, uint8_t *reply)
 	};
 
 	state->sys_mode = GET_STR(reply[2], mode);
-	state->num_detected_ports = reply[3];
+	if (!reply[3] || reply[3] > MAX_PORT)
+		ULOG_ERR("num_detected_ports=%d is invalid\n", reply[3]);
+	else
+		state->num_detected_ports = reply[3];
 	state->port_map_en = reply[4];
 	state->device_id =  read16_be(reply + 5);
 	state->sys_version = reply[7];
@@ -613,7 +616,12 @@ static int poe_cmd_port_power_stats(struct mcu *mcu, uint8_t port)
 
 static int poe_reply_port_power_stats(struct mcu_state *state, uint8_t *reply)
 {
-	int port_idx = reply[2];
+	unsigned int port_idx = reply[2];
+
+	if (port_idx > state->num_detected_ports) {
+		ULOG_WARN("Invalid port in power stat (port=%d)\n", port_idx);
+		return -EPROTO;
+	}
 
 	state->ports[port_idx].watt = read16_be(reply + 9) * 0.1;
 	return 0;
