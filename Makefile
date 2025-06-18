@@ -3,7 +3,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=realtek-poe
 PKG_RELEASE:=1
 
-PKG_LICENSE:=GPL-2.0
+PKG_LICENSE:=GPL-2.0-or-later
 PKG_MAINTAINER:=John Crispin <john@phrozen.org>
 
 include $(INCLUDE_DIR)/package.mk
