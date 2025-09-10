@@ -1276,14 +1276,12 @@ int main(int argc, char **argv)
 	ulog_open(ULOG_STDIO | ULOG_SYSLOG, LOG_DAEMON, "realtek-poe");
 	ulog_threshold(LOG_INFO);
 
-	while ((ch = getopt(argc, argv, "ds")) != -1) {
+	while ((ch = getopt(argc, argv, "d")) != -1) {
 		switch (ch) {
 		case 'd':
 			ulog_threshold(LOG_DEBUG);
 			poe.hardcore_hacking_mode_en = 1;
 			break;
-		case 'f':
-			baudrate = 115200;
 		}
 	}
 
@@ -1298,10 +1296,8 @@ int main(int argc, char **argv)
 	/* Users of poe_dialect assume the reverse mapping is computed. */
 	dialect_reverse_map(&poe.mcu.dialect);
 
-	/* Prefer '-s' argument over any config file option */
-	if (baudrate) {
-		/* Keep existing baudrate */
-	} else if (poe.config.forced_baudrate) {
+	/* Temporarily allow config file to override baudrate */
+	if (poe.config.forced_baudrate) {
 		baudrate = poe.config.forced_baudrate;
 	} else {
 		baudrate = 19200;
