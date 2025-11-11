@@ -456,12 +456,12 @@ static int poe_set_port_power_up_mode(struct mcu *mcu, uint8_t port[4],
 
 static int poe_reply_port_led_map(struct mcu_state *state, uint8_t *reply)
 {
-	unsigned int port_offset = reply[2];
+	/*unsigned int port_offset = reply[2];
 
 	unsigned int led_index[8];
 	for (uint8_t i = 0; i < 8; i++) {
 		led_index[i] = reply[3 + i];
-	}
+	}*/
 
 	return 0;
 }
