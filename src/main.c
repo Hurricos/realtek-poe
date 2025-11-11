@@ -463,8 +463,6 @@ static int poe_reply_port_led_map(struct mcu_state *state, uint8_t *reply)
 		led_index[i] = reply[3 + i];
 	}
 
-	ULOG_ERR("LED MAP: PORT_OFFSET=%d LED_INDEX[0]=%d LED_INDEX[1]=%d LED_INDEX[2]=%d LED_INDEX[3]=%d LED_INDEX[4]=%d LED_INDEX[5]=%d LED_INDEX[6]=%d LED_INDEX[7]=%d", port_offset, led_index[0], led_index[1], led_index[2], led_index[3], led_index[4], led_index[5], led_index[6], led_index[7]);
-
 	return 0;
 }
 
@@ -479,20 +477,6 @@ static int poe_port_set_led_map(struct mcu *mcu, uint8_t port_offset)
 	}
 
 	return mcu_queue_cmd(mcu, cmd, sizeof(cmd));
-}
-
-static int poe_reply_port_set_led_map(struct mcu_state *state, uint8_t *reply)
-{
-	unsigned int port_offset = reply[2];
-
-	unsigned int led_index[8];
-	for (uint8_t i = 0; i < 8; i++) {
-		led_index[i] = reply[3 + i];
-	}
-
-	ULOG_ERR("LED MAP SET REPLY: PORT_OFFSET=%d LED_INDEX[0]=%d LED_INDEX[1]=%d LED_INDEX[2]=%d LED_INDEX[3]=%d LED_INDEX[4]=%d LED_INDEX[5]=%d LED_INDEX[6]=%d LED_INDEX[7]=%d", port_offset, led_index[0], led_index[1], led_index[2], led_index[3], led_index[4], led_index[5], led_index[6], led_index[7]);
-
-	return 0;
 }
 
 /* 0x20 - Get system info */
@@ -777,7 +761,7 @@ static poe_reply_handler reply_handler[] = {
 	[PORT_GET_EXT_CONFIG]		= poe_reply_port_ext_config,
 	[MCU_GET_EXT_CONFIG]		= poe_reply_extended_config,
 	[PORT_GET_LED_MAP]		=  poe_reply_port_led_map,
-	[PORT_SET_LED_MAP]		=  poe_reply_port_set_led_map,
+	[PORT_SET_LED_MAP]		=  poe_reply_port_led_map,
 };
 
 static void mcu_clear_timeout(struct uloop_timeout *t)
