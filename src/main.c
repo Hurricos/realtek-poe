@@ -108,12 +108,13 @@ static void load_global_config(struct config *cfg, struct uci_context *uci,
 			       struct uci_section *s)
 
 {
-	const char *budget, *guardband, *baudrate_hack, *dialect_hack;
+	const char *budget, *guardband, *baudrate_hack, *dialect_hack, *map_leds;
 
 	budget = uci_lookup_option_string(uci, s, "budget");
 	guardband = uci_lookup_option_string(uci, s, "guard");
 	baudrate_hack = uci_lookup_option_string(uci, s, "force_baudrate");
 	dialect_hack = uci_lookup_option_string(uci, s, "force_dialect");
+	map_leds = uci_lookup_option_string(uci, s, "map_leds");
 
 	cfg->budget = budget ? strtof(budget, NULL) : 31.0;
 	cfg->budget_guard = cfg->budget / 10;
@@ -134,6 +135,8 @@ static void load_global_config(struct config *cfg, struct uci_context *uci,
 		else
 			ULOG_ERR("Unkown dialect '%s'\n", dialect_hack);
 	}
+
+	cfg->map_leds = map_leds ? !strcmp(map_leds, "1") : 0;
 }
 
 static char *get_board_compatible(void)
@@ -443,6 +446,39 @@ static int poe_set_port_power_up_mode(struct mcu *mcu, uint8_t port[4],
 	return poet_cmd_4_port(mcu, PORT_SET_POE_MODE, port, mode);
 }
 
+/* 0x49 - Get port led map */
+/*static int poe_port_led_map(struct mcu *mcu, uint8_t port_offset)
+{
+	uint8_t cmd[] = { PORT_GET_LED_MAP, 0x00, port_offset };
+
+	return mcu_queue_cmd(mcu, cmd, sizeof(cmd));
+}*/
+
+static int poe_reply_port_led_map(struct mcu_state *state, uint8_t *reply)
+{
+	/*unsigned int port_offset = reply[2];
+
+	unsigned int led_index[8];
+	for (uint8_t i = 0; i < 8; i++) {
+		led_index[i] = reply[3 + i];
+	}*/
+
+	return 0;
+}
+
+
+/* 0x49 - Set port led map */
+static int poe_port_set_led_map(struct mcu *mcu, uint8_t port_offset)
+{
+	uint8_t cmd[11] = { PORT_SET_LED_MAP, 0x00, port_offset };
+
+	for (uint8_t i = 0; i < 8; i++) {
+		cmd[3 + i] = port_offset + i;
+	}
+
+	return mcu_queue_cmd(mcu, cmd, sizeof(cmd));
+}
+
 /* 0x20 - Get system info */
 static int poe_cmd_status(struct mcu *mcu)
 {
@@ -724,6 +760,8 @@ static poe_reply_handler reply_handler[] = {
 	[PORT_GET_CONFIG]		= poe_reply_port_config,
 	[PORT_GET_EXT_CONFIG]		= poe_reply_port_ext_config,
 	[MCU_GET_EXT_CONFIG]		= poe_reply_extended_config,
+	[PORT_GET_LED_MAP]		=  poe_reply_port_led_map,
+	[PORT_SET_LED_MAP]		=  poe_reply_port_led_map,
 };
 
 static void mcu_clear_timeout(struct uloop_timeout *t)
@@ -944,6 +982,11 @@ static int poe_port_setup(struct mcu* mcu, const struct config *cfg)
 	for (i = 0; i < cfg->port_count; i++) {
 		poe_cmd_port_enable(mcu, i, !!cfg->ports[i].enable);
 		poe_cmd_port_ext_config(mcu, i);
+
+		if (i % 8 == 0 && cfg->map_leds) {
+			poe_port_set_led_map(mcu, i);
+			//poe_port_led_map(mcu, i);
+		}
 	}
 
 	return 0;

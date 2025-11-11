@@ -44,7 +44,9 @@ enum poe_cmd {
 	PORT_GET_STATUS,
 	PORT_GET_SHORT_STATUS,
 	PORT_GET_POWER_STATS,
-	CMD_MAX
+	CMD_MAX,
+	PORT_GET_LED_MAP,
+	PORT_SET_LED_MAP
 };
 
 enum poe_cmd_flags {
@@ -124,6 +126,7 @@ struct config {
 	float budget;
 	float budget_guard;
 
+	unsigned int map_leds : 1;
 	unsigned int forced_baudrate;
 	unsigned int port_count;
 	uint8_t pse_id_set_budget_mask;
