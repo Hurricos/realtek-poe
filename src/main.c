@@ -169,6 +169,11 @@ static void config_apply_quirks(struct config *config)
 		config->pse_id_set_budget_mask = 0xff;
 	}
 
+	if (!strcmp(compatible, "zyxel,gs1900-48hp-a1")) {
+		/* Budget must be sent to PSE ID 7 on this device */
+		config->pse_id_set_budget_mask = 0x80;
+	}
+
 	free(compatible);
 }
 
