@@ -164,7 +164,8 @@ static void config_apply_quirks(struct config *config)
 		return;
 	}
 
-	if (!strcmp(compatible, "zyxel,gs1900-24hp-v1")) {
+	if (!strcmp(compatible, "zyxel,gs1900-24hp-v1") ||
+	    !strcmp(compatible, "zyxel,gs1900-24hp-a1")) {
 		/* Send budget command to first 8 PSE IDs */
 		config->pse_id_set_budget_mask = 0xff;
 	}
