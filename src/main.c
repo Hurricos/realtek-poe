@@ -1223,7 +1223,10 @@ static int ubus_poe_manage_cb(struct ubus_context *ctx, struct ubus_object *obj,
 		port = &cfg->ports[i];
 		if (!port->enable || strcmp(port_name, port->name))
 			continue;
-		return poe_cmd_port_enable(mcu, i, blobmsg_get_bool(tb[1]));
+		if (poe_cmd_port_enable(mcu, i, blobmsg_get_bool(tb[1])) < 0)
+			return UBUS_STATUS_SYSTEM_ERROR;
+
+		return UBUS_STATUS_OK;
 	}
 	return UBUS_STATUS_OK;
 }
