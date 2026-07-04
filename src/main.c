@@ -1221,10 +1221,15 @@ static int ubus_poe_manage_cb(struct ubus_context *ctx, struct ubus_object *obj,
 	port_name = blobmsg_get_string(tb[0]);
 	for (i = 0; i < cfg->port_count; i++) {
 		port = &cfg->ports[i];
-		if (!port->enable || strcmp(port_name, port->name))
-			continue;
-		return poe_cmd_port_enable(mcu, i, blobmsg_get_bool(tb[1]));
+		if (port->enable && !strcmp(port_name, port->name))
+			break;
 	}
+	if (i == cfg->port_count)
+		return UBUS_STATUS_OK;
+
+	if (poe_cmd_port_enable(mcu, i, blobmsg_get_bool(tb[1])) < 0)
+		return UBUS_STATUS_SYSTEM_ERROR;
+
 	return UBUS_STATUS_OK;
 }
 
