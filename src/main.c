@@ -218,6 +218,7 @@ static void mcu_no_response(struct uloop_timeout *t)
 	while (!list_empty(&mcu->pending_cmds)) {
 		cmd = list_first_entry(&mcu->pending_cmds, struct cmd, list);
 		list_del(&cmd->list);
+		free(cmd);
 	}
 
 	ULOG_ERR("No response from PoE controller. Trying a reset\n");
