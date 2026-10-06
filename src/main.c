@@ -210,16 +210,52 @@ static void config_load(struct config *cfg, int init)
 	uci_free_context(uci);
 }
 
+/* Allocate a command with the next sequence number and checksum, and append it
+ * to the queue, which owns it until cmd_pop().
+ */
+static struct cmd *cmd_push(struct mcu *mcu, const uint8_t *cmd_buf, size_t len)
+{
+	struct cmd *cmd = calloc(1, sizeof(*cmd));
+	int i;
+
+	memset(cmd->cmd, 0xff, CMD_SIZE);
+	memcpy(cmd->cmd, cmd_buf, len);
+
+	mcu->cmd_seq++;
+	cmd->cmd[1] = mcu->cmd_seq;
+	cmd->cmd[OFFSET_CHECKSUM] = 0;
+
+	for (i = 0; i < OFFSET_CHECKSUM; i++)
+		cmd->cmd[OFFSET_CHECKSUM] += cmd->cmd[i];
+
+	list_add_tail(&cmd->list, &mcu->pending_cmds);
+
+	return cmd;
+}
+
+/* Detach the oldest command from the queue. The caller owns it: free it, or
+ * put it back with list_add() to retry it.
+ */
+static struct cmd *cmd_pop(struct mcu *mcu)
+{
+	struct cmd *cmd;
+
+	if (list_empty(&mcu->pending_cmds))
+		return NULL;
+
+	cmd = list_first_entry(&mcu->pending_cmds, struct cmd, list);
+	list_del(&cmd->list);
+
+	return cmd;
+}
+
 static void mcu_no_response(struct uloop_timeout *t)
 {
 	struct mcu *mcu = container_of(t, struct mcu, response_timeout);
 	struct cmd *cmd;
 
-	while (!list_empty(&mcu->pending_cmds)) {
-		cmd = list_first_entry(&mcu->pending_cmds, struct cmd, list);
-		list_del(&cmd->list);
+	while ((cmd = cmd_pop(mcu)))
 		free(cmd);
-	}
 
 	ULOG_ERR("No response from PoE controller. Trying a reset\n");
 
@@ -260,21 +296,8 @@ static int mcu_cmd_next(struct mcu *mcu)
 
 int mcu_queue_buf(struct mcu *mcu, uint8_t *cmd_buf, size_t len)
 {
-	int i, empty = list_empty(&mcu->pending_cmds);
-	struct cmd *cmd = malloc(sizeof(*cmd));
-
-	memset(cmd, 0, sizeof(*cmd));
-	memset(cmd->cmd, 0xff, CMD_SIZE);
-	memcpy(cmd->cmd, cmd_buf, len);
-
-	mcu->cmd_seq++;
-	cmd->cmd[1] = mcu->cmd_seq;
-	cmd->cmd[OFFSET_CHECKSUM] = 0;
-
-	for (i = 0; i < OFFSET_CHECKSUM; i++)
-		cmd->cmd[OFFSET_CHECKSUM] += cmd->cmd[i];
-
-	list_add_tail(&cmd->list, &mcu->pending_cmds);
+	int empty = list_empty(&mcu->pending_cmds);
+	struct cmd *cmd = cmd_push(mcu, cmd_buf, len);
 
 	if (empty)
 		return mcu_cmd_send(mcu, cmd);
@@ -786,13 +809,12 @@ static int mcu_handle_reply(struct mcu *mcu, uint8_t *reply)
 	uloop_timeout_cancel(&mcu->response_timeout);
 	log_packet(LOG_DEBUG, "RX <-", reply);
 
-	if (list_empty(&mcu->pending_cmds)) {
+	cmd = cmd_pop(mcu);
+	if (!cmd) {
 		ULOG_ERR("received unsolicited reply\n");
 		return -1;
 	}
 
-	cmd = list_first_entry(&mcu->pending_cmds, struct cmd, list);
-	list_del(&cmd->list);
 	cmd_id = cmd->cmd[0];
 	cmd_seq = cmd->cmd[1];
 
