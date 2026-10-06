@@ -19,8 +19,8 @@ on:
     branches: [ "master", "realtek-poe" ]
 
 jobs:
-  build:
-    name: Build
+  build_4kec:
+    name: Build for mips_4kec
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,3 +50,35 @@ jobs:
         with:
           name: mips_4kec-packages
           path: bin/packages/mips_4kec/base/realtek-poe_*.ipk
+
+  build_24kc:
+    name: Build for mips_24kc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Copy-paste from openwrt action
+        run: |
+          mkdir $GITHUB_WORKSPACE/bin
+          sudo chown -R 1000:1000 $GITHUB_WORKSPACE
+
+      - name: Build in docker container
+        run: |
+          docker run --rm \
+            -v $GITHUB_WORKSPACE/bin:/home/build/openwrt/bin \
+            -v $GITHUB_WORKSPACE:/home/build/openwrt/package/realtek-poe \
+            openwrt/sdk:realtek-rtl839x-snapshot \
+            /bin/bash -c " \
+              ./scripts/feeds update base \
+              && ./scripts/feeds install libubus libuci \
+              && make defconfig \
+              && make package/realtek-poe/compile -j$(nproc) V=s
+            "
+
+      - name: Store packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: mips_24kc-packages
+          path: bin/packages/mips_24kc/base/realtek-poe_*.ipk
