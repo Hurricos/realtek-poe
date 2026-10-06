@@ -23,6 +23,9 @@ static const struct dialect_map_entry bcm_dialect_mapping[] = {
 	[PORT_GET_EXT_CONFIG]		= {0x26, 1},
 	[PORT_GET_SHORT_STATUS]		= {0x28, CMD_IS_4PORT},
 	[PORT_GET_POWER_STATS]		= {0x30, 1},
+
+	[PORT_GET_LED_MAP]		= {0x49, 1},
+	[PORT_SET_LED_MAP]		= {0x48, 1},
 };
 
 static const struct dialect_map bcm_dialect_map = {
